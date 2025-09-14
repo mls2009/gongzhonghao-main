@@ -1,0 +1,692 @@
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy.orm import Session
+from typing import Optional, List
+from datetime import datetime
+from models.database import get_db, ImageTemplate, ContentTemplate, TemplateState
+from pydantic import BaseModel
+import json
+import random
+import os
+from pathlib import Path
+import shutil
+import re
+import base64
+import uuid
+
+router = APIRouter(prefix="/api/template-materials", tags=["template-materials"])
+
+# Request models
+class ImageTemplateCreate(BaseModel):
+    name: str
+    template_type: str  # 'insert' or 'overlay'
+    text_style: str
+    text_color: str = '#2c3e50'
+    background_style: str
+    font_size: int = 40
+    line_height: str = '1.2'
+    mask_opacity: str = '0'
+    text_lines: int = 3
+    custom_background_path: Optional[str] = None
+
+class ContentTemplateCreate(BaseModel):
+    name: str
+    description_templates: Optional[List[str]] = []
+    use_random_description: bool = True
+    no_description: bool = False
+    topic_templates: Optional[List[str]] = []
+    topic_count: int = 7
+
+class TemplateStateUpdate(BaseModel):
+    template_type: str  # 'image' or 'content'
+    template_id: Optional[int] = None
+    mode: str = 'random'
+    enabled: bool = True
+
+@router.get("/image-templates")
+async def get_image_templates(db: Session = Depends(get_db)):
+    """获取所有图片模板"""
+    templates = db.query(ImageTemplate).order_by(ImageTemplate.created_at.desc()).all()
+    return [{
+        "id": t.id, 
+        "name": t.name, 
+        "template_type": t.template_type,
+        "text_style": t.text_style,
+        "text_color": t.text_color,
+        "background_style": t.background_style,
+        "font_size": t.font_size,
+        "line_height": t.line_height,
+        "mask_opacity": t.mask_opacity,
+        "text_lines": t.text_lines,
+        "custom_background_path": t.custom_background_path,
+        "created_at": t.created_at.isoformat()
+    } for t in templates]
+
+@router.get("/content-templates")  
+async def get_content_templates(db: Session = Depends(get_db)):
+    """获取所有内容模板"""
+    templates = db.query(ContentTemplate).order_by(ContentTemplate.created_at.desc()).all()
+    result = []
+    for t in templates:
+        description_templates = []
+        topic_templates = []
+        
+        if t.description_templates:
+            try:
+                description_templates = json.loads(t.description_templates)
+            except:
+                pass
+                
+        if t.topic_templates:
+            try:
+                topic_templates = json.loads(t.topic_templates)
+            except:
+                pass
+        
+        result.append({
+            "id": t.id,
+            "name": t.name,
+            "description_templates": description_templates,
+            "use_random_description": t.use_random_description,
+            "no_description": t.no_description,
+            "topic_templates": topic_templates,
+            "topic_count": t.topic_count,
+            "created_at": t.created_at.isoformat()
+        })
+    
+    return result
+
+@router.get("/current-templates")
+async def get_current_templates(db: Session = Depends(get_db)):
+    """获取当前应用的模板模式"""
+    state = get_or_create_template_state(db)
+    
+    image_template_name = "随机模式"
+    content_template_name = "随机模式"
+    
+    if state.image_template_enabled and state.current_image_template_id:
+        image_template = db.query(ImageTemplate).filter(ImageTemplate.id == state.current_image_template_id).first()
+        if image_template:
+            image_template_name = image_template.name
+    
+    if state.content_template_enabled and state.current_content_template_id:
+        content_template = db.query(ContentTemplate).filter(ContentTemplate.id == state.current_content_template_id).first()
+        if content_template:
+            content_template_name = content_template.name
+    
+    return {
+        "success": True,
+        "image_template_mode": {
+            "is_random_mode": not state.image_template_enabled,
+            "current_template_id": state.current_image_template_id if state.image_template_enabled else None,
+            "current_template_name": image_template_name,
+            "mode": state.image_template_mode
+        },
+        "content_template_mode": {
+            "is_random_mode": not state.content_template_enabled,
+            "current_template_id": state.current_content_template_id if state.content_template_enabled else None,
+            "current_template_name": content_template_name,
+            "mode": state.content_template_mode
+        }
+    }
+
+@router.post("/apply-image-template/{template_id}")
+async def apply_image_template(template_id: int, db: Session = Depends(get_db)):
+    """应用指定的图片模板"""
+    template = db.query(ImageTemplate).filter(ImageTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="模板未找到")
+    
+    # 更新模板状态
+    state = get_or_create_template_state(db)
+    state.current_image_template_id = template_id
+    state.image_template_mode = template.template_type  # 'insert' or 'overlay'
+    state.image_template_enabled = True
+    db.commit()
+    
+    return {
+        "success": True, 
+        "message": f"已应用图片模板: {template.name}", 
+        "template_id": template_id,
+        "mode": template.template_type
+    }
+
+@router.post("/exit-current-template")
+async def exit_current_template(db: Session = Depends(get_db)):
+    """退出当前指定的图片模板"""
+    state = get_or_create_template_state(db)
+    state.current_image_template_id = None
+    state.image_template_mode = 'random'
+    state.image_template_enabled = False
+    db.commit()
+    
+    return {"success": True, "message": "已切换为随机模式"}
+
+@router.get("/get-template-status")
+async def get_template_status(db: Session = Depends(get_db)):
+    """获取当前模板指定状态"""
+    state = get_or_create_template_state(db)
+    
+    has_template = state.image_template_enabled and state.current_image_template_id is not None
+    template_name = "随机模式"
+    template_id = None
+    
+    if has_template:
+        template = db.query(ImageTemplate).filter(ImageTemplate.id == state.current_image_template_id).first()
+        if template:
+            template_name = template.name
+            template_id = template.id
+    
+    return {
+        "success": True,
+        "has_template": has_template,
+        "template_name": template_name,
+        "template_id": template_id,
+        "mode": state.image_template_mode
+    }
+
+@router.post("/apply-content-template/{template_id}")
+async def apply_content_template(template_id: int, db: Session = Depends(get_db)):
+    """应用指定的内容模板"""
+    template = db.query(ContentTemplate).filter(ContentTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="模板未找到")
+    
+    # 更新模板状态
+    state = get_or_create_template_state(db)
+    state.current_content_template_id = template_id
+    state.content_template_mode = 'specific'
+    state.content_template_enabled = True
+    db.commit()
+    
+    return {
+        "success": True, 
+        "message": f"已应用内容模板: {template.name}", 
+        "template_id": template_id
+    }
+
+@router.post("/enable-content-random-mode")
+async def enable_content_random_mode(db: Session = Depends(get_db)):
+    """启用内容模板随机模式"""
+    state = get_or_create_template_state(db)
+    state.current_content_template_id = None
+    state.content_template_mode = 'random'
+    state.content_template_enabled = False
+    db.commit()
+    
+    return {"success": True, "message": "已启用内容模板随机模式"}
+
+@router.get("/get-current-image-template")
+async def get_current_image_template(material_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """获取当前图片模板（用于发布时应用）"""
+    state = get_or_create_template_state(db)
+    
+    template = None
+    
+    if state.image_template_enabled and state.current_image_template_id:
+        # 使用指定模板
+        template = db.query(ImageTemplate).filter(ImageTemplate.id == state.current_image_template_id).first()
+    else:
+        # 随机选择模板
+        templates = db.query(ImageTemplate).all()
+        if templates:
+            template = random.choice(templates)
+    
+    if not template:
+        return {"success": False, "message": "没有可用的图片模板"}
+    
+    template_data = {
+        "id": template.id,
+        "name": template.name,
+        "template_type": template.template_type,
+        "text_style": template.text_style,
+        "text_color": template.text_color,
+        "background_style": template.background_style,
+        "font_size": template.font_size,
+        "line_height": template.line_height,
+        "mask_opacity": template.mask_opacity,
+        "text_lines": template.text_lines,
+        "custom_background_path": template.custom_background_path
+    }
+    
+    return {"success": True, "template": template_data, "mode": state.image_template_mode}
+
+@router.get("/get-current-content-template")
+async def get_current_content_template(db: Session = Depends(get_db)):
+    """获取当前内容模板（用于发布时应用）"""
+    state = get_or_create_template_state(db)
+    
+    template = None
+    
+    if state.content_template_enabled and state.current_content_template_id:
+        # 使用指定模板
+        template = db.query(ContentTemplate).filter(ContentTemplate.id == state.current_content_template_id).first()
+    else:
+        # 随机选择模板
+        templates = db.query(ContentTemplate).all()
+        if templates:
+            template = random.choice(templates)
+    
+    if not template:
+        return {"success": False, "message": "没有可用的内容模板"}
+    
+    # 解析JSON字段
+    description_templates = []
+    topic_templates = []
+    
+    if template.description_templates:
+        try:
+            description_templates = json.loads(template.description_templates)
+        except:
+            description_templates = []
+    
+    if template.topic_templates:
+        try:
+            topic_templates = json.loads(template.topic_templates)
+        except:
+            topic_templates = []
+    
+    return {
+        "success": True,
+        "template": {
+            "id": template.id,
+            "name": template.name,
+            "description_templates": description_templates,
+            "use_random_description": template.use_random_description,
+            "no_description": template.no_description,
+            "topic_templates": topic_templates,
+            "topic_count": template.topic_count
+        }
+    }
+
+# 新增API端点
+@router.post("/save-image-template")
+async def save_image_template(template: ImageTemplateCreate, db: Session = Depends(get_db)):
+    """保存图片模板"""
+    try:
+        db_template = ImageTemplate(
+            name=template.name,
+            template_type=template.template_type,
+            text_style=template.text_style,
+            text_color=template.text_color,
+            background_style=template.background_style,
+            font_size=template.font_size,
+            line_height=template.line_height,
+            mask_opacity=template.mask_opacity,
+            text_lines=template.text_lines,
+            custom_background_path=template.custom_background_path
+        )
+        
+        db.add(db_template)
+        db.commit()
+        db.refresh(db_template)
+        
+        return {
+            "success": True, 
+            "message": f"图片模板 '{template.name}' 保存成功",
+            "template_id": db_template.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"保存模板失败: {str(e)}")
+
+@router.delete("/image-template/{template_id}")
+async def delete_image_template(template_id: int, db: Session = Depends(get_db)):
+    """删除图片模板"""
+    template = db.query(ImageTemplate).filter(ImageTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="模板未找到")
+    
+    # 如果是当前应用的模板，先退出
+    state = get_or_create_template_state(db)
+    if state.current_image_template_id == template_id:
+        state.current_image_template_id = None
+        state.image_template_enabled = False
+    
+    template_name = template.name
+    db.delete(template)
+    db.commit()
+    
+    return {"success": True, "message": f"模板 '{template_name}' 已删除"}
+
+@router.post("/save-content-template")
+async def save_content_template(template: ContentTemplateCreate, db: Session = Depends(get_db)):
+    """保存内容模板"""
+    try:
+        db_template = ContentTemplate(
+            name=template.name,
+            description_templates=json.dumps(template.description_templates, ensure_ascii=False),
+            use_random_description=template.use_random_description,
+            no_description=template.no_description,
+            topic_templates=json.dumps(template.topic_templates, ensure_ascii=False),
+            topic_count=template.topic_count
+        )
+        
+        db.add(db_template)
+        db.commit()
+        db.refresh(db_template)
+        
+        return {
+            "success": True,
+            "message": f"内容模板 '{template.name}' 保存成功",
+            "template_id": db_template.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"保存内容模板失败: {str(e)}")
+
+@router.delete("/content-template/{template_id}")
+async def delete_content_template(template_id: int, db: Session = Depends(get_db)):
+    """删除内容模板"""
+    template = db.query(ContentTemplate).filter(ContentTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="模板未找到")
+    
+    # 如果是当前应用的模板，先退出
+    state = get_or_create_template_state(db)
+    if state.current_content_template_id == template_id:
+        state.current_content_template_id = None
+        state.content_template_enabled = False
+    
+    template_name = template.name
+    db.delete(template)
+    db.commit()
+    
+    return {"success": True, "message": f"内容模板 '{template_name}' 已删除"}
+
+@router.post("/upload-background")
+async def upload_background(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """上传自定义背景图片"""
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+    
+    # 创建上传目录
+    upload_dir = Path("app/static/uploads/backgrounds")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 生成唯一文件名
+    file_extension = Path(file.filename).suffix
+    filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(1000, 9999)}{file_extension}"
+    file_path = upload_dir / filename
+    
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # 返回相对路径
+        relative_path = f"/static/uploads/backgrounds/{filename}"
+        
+        return {
+            "success": True,
+            "message": "背景图片上传成功",
+            "file_path": relative_path
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
+
+class ContentPreviewRequest(BaseModel):
+    template_id: Optional[int] = None
+
+@router.post("/generate-content-preview")
+async def generate_content_preview(request: ContentPreviewRequest = ContentPreviewRequest(), db: Session = Depends(get_db)):
+    """生成内容预览"""
+    template_id = request.template_id if request else None
+    
+    if template_id:
+        template = db.query(ContentTemplate).filter(ContentTemplate.id == template_id).first()
+        if not template:
+            raise HTTPException(status_code=404, detail="模板未找到")
+    else:
+        # 获取当前模板或随机选择
+        state = get_or_create_template_state(db)
+        if state.content_template_enabled and state.current_content_template_id:
+            template = db.query(ContentTemplate).filter(ContentTemplate.id == state.current_content_template_id).first()
+        else:
+            templates = db.query(ContentTemplate).all()
+            if not templates:
+                return {"success": False, "message": "没有可用的内容模板"}
+            template = random.choice(templates)
+    
+    # 生成预览内容 - 使用固定示例标题，不显示地区标签
+    preview_content = await generate_template_content(template, "示例标题：9月6日招聘信息", for_preview=True)
+    
+    return {
+        "success": True,
+        "content": preview_content,
+        "template_name": template.name
+    }
+
+# 辅助函数
+def get_or_create_template_state(db: Session) -> TemplateState:
+    """获取或创建模板状态"""
+    state = db.query(TemplateState).first()
+    if not state:
+        state = TemplateState()
+        db.add(state)
+        db.commit()
+        db.refresh(state)
+    return state
+
+def extract_region_from_title(title: str) -> str:
+    """从标题中提取地区信息 - 提取年字和央国企之间的文字"""
+    # 使用正则表达式提取年字和央国企之间的文字
+    match = re.search(r"年(.+?)央国企", title)
+    if match:
+        return match.group(1)
+    
+    # 如果没有找到，尝试其他模式
+    match = re.search(r"年(.+?)国企", title)
+    if match:
+        return match.group(1)
+    
+    # 如果都没有找到，返回默认值
+    return "全国"
+    """从标题中提取地区信息"""
+    regions = ['北京', '上海', '广州', '深圳', '杭州', '成都', '武汉', '西安', '南京', '苏州']
+    for region in regions:
+        if region in title:
+            return region
+    return '全国'
+
+async def generate_template_content(template: ContentTemplate, material_title: str, for_preview: bool = False) -> str:
+    """根据模板生成内容"""
+    content_parts = []
+    
+    # 解析模板数据
+    topic_templates = []
+    if template.topic_templates:
+        try:
+            topic_templates = json.loads(template.topic_templates)
+        except:
+            pass
+    
+    # 生成话题
+    topics = []
+    if topic_templates:
+        if for_preview:
+            # 预览时显示所有话题（最多显示前10个）
+            topics.extend(topic_templates[:10])
+        else:
+            # 发布时从模板中随机选择话题
+            selected_topics = random.sample(topic_templates, min(template.topic_count, len(topic_templates)))
+            topics.extend(selected_topics)
+    
+    # 添加固定的地区相关话题（仅发布时添加，预览时不添加）
+    if not for_preview:
+        region = extract_region_from_title(material_title)
+        topics.append(f"#{region}国企")
+        topics.append(f"#{region}国企招聘")
+    
+    # 组合内容
+    if not template.no_description:
+        description_templates = []
+        if template.description_templates:
+            try:
+                description_templates = json.loads(template.description_templates)
+            except:
+                pass
+        
+        if description_templates:
+            # 直接使用所有描述内容，不随机选择
+            content_parts.extend(description_templates)
+    
+    # 添加话题
+    if topics:
+        content_parts.append(' '.join(topics))
+    
+    return '\n\n'.join(content_parts) if content_parts else ''
+
+def parse_material_title_for_image_text(title: str, text_lines: int) -> List[str]:
+    """解析素材标题，生成图片文字内容"""
+    lines = []
+    
+    # 提取日期
+    date_match = re.search(r'(\d+月\d+日|\d+\/\d+)', title)
+    if date_match:
+        lines.append(date_match.group(1))
+    
+    # 提取地区和企业类型
+    region = extract_region_from_title(title)
+    enterprise_types = ['央企', '国企', '外企', '民企']
+    enterprise_type = '央国企'  # 默认
+    
+    for etype in enterprise_types:
+        if etype in title:
+            enterprise_type = etype
+            break
+    
+    lines.append(f"{region}{enterprise_type}")
+    lines.append("招聘信息差")
+    
+    # 如果是4行模式，添加引导文字
+    if text_lines > 3:
+        lines.append("右划更多👉🏻")
+    
+    return lines[:text_lines]
+
+class GenerateImageRequest(BaseModel):
+    template_config: dict
+    text_lines: List[str]
+    mode: str = 'insert'
+    output_path: str
+
+@router.post("/generate-image-from-canvas")
+async def generate_image_from_canvas(request: GenerateImageRequest):
+    """接收前端Canvas生成的图片数据并保存到指定路径"""
+    try:
+        # 这个API主要用作前端和后端之间的桥梁
+        # 实际的图片生成会在前端完成，然后通过 save-generated-image API保存
+        
+        return {
+            "success": True,
+            "message": "请使用前端Canvas生成图片后调用save-generated-image API",
+            "config": request.template_config
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成图片失败: {str(e)}")
+
+class SaveGeneratedImageRequest(BaseModel):
+    image_data: str  # Base64图片数据
+    output_path: str  # 输出路径
+    filename: Optional[str] = None  # 可选的文件名
+
+@router.post("/save-generated-image") 
+async def save_generated_image(request: SaveGeneratedImageRequest):
+    """保存前端生成的Base64图片数据到指定路径"""
+    try:
+        # 解析Base64图片数据
+        if ',' in request.image_data:
+            # 移除data:image/png;base64,前缀
+            base64_data = request.image_data.split(',')[1]
+        else:
+            base64_data = request.image_data
+            
+        # 解码图片数据
+        image_bytes = base64.b64decode(base64_data)
+        
+        # 确保输出目录存在
+        output_dir = Path(request.output_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 生成文件名
+        if request.filename:
+            filename = request.filename
+        else:
+            filename = f"generated_{uuid.uuid4().hex[:8]}.png"
+            
+        # 确保文件扩展名为.png
+        if not filename.endswith('.png'):
+            filename += '.png'
+            
+        # 保存图片文件
+        output_file = output_dir / filename
+        with open(output_file, 'wb') as f:
+            f.write(image_bytes)
+            
+        return {
+            "success": True,
+            "message": f"图片已保存: {filename}",
+            "file_path": str(output_file),
+            "filename": filename
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"保存图片失败: {str(e)}")
+
+@router.post("/generate-template-image-for-material")
+async def generate_template_image_for_material(
+    material_id: int,
+    db: Session = Depends(get_db)
+):
+    """为指定素材生成模版图片"""
+    try:
+        # 这个API将作为发布流程的一部分被调用
+        # 它会返回生成配置，让前端Canvas生成图片
+        
+        # 获取素材信息
+        from models.database import XiaohongshuMaterial
+        material = db.query(XiaohongshuMaterial).filter(XiaohongshuMaterial.id == material_id).first()
+        if not material:
+            raise HTTPException(status_code=404, detail="素材不存在")
+            
+        # 获取当前模版状态
+        template_state = get_or_create_template_state(db)
+        
+        # 获取图片模版
+        template = None
+        if template_state.image_template_enabled and template_state.current_image_template_id:
+            template = db.query(ImageTemplate).filter(
+                ImageTemplate.id == template_state.current_image_template_id
+            ).first()
+        else:
+            # 随机选择模版
+            templates = db.query(ImageTemplate).all()
+            if templates:
+                template = random.choice(templates)
+                
+        if not template:
+            return {"success": False, "message": "没有可用的图片模版"}
+            
+        # 解析素材标题生成文字内容
+        text_lines = parse_material_title_for_image_text(material.title, template.text_lines)
+        
+        # 构建模版配置
+        template_config = {
+            "text_style": template.text_style,
+            "text_color": template.text_color,
+            "background_style": template.background_style,
+            "font_size": template.font_size,
+            "line_height": float(template.line_height),
+            "mask_opacity": float(template.mask_opacity),
+            "custom_background_path": template.custom_background_path
+        }
+        
+        return {
+            "success": True,
+            "template_config": template_config,
+            "text_lines": text_lines,
+            "mode": template.template_type,
+            "output_path": material.folder_path,
+            "material_id": material_id,
+            "template_name": template.name
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成模版图片配置失败: {str(e)}")

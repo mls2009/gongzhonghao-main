@@ -1,0 +1,990 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from models.database import get_db, XiaohongshuMaterial, XiaohongshuSettings, Account, TemplateState, ImageTemplate, ContentTemplate
+from typing import List, Optional
+from pydantic import BaseModel
+import json
+import logging
+import os
+from pathlib import Path
+import re
+from datetime import datetime
+import random
+import importlib.util
+
+# 本地模板管理函数定义
+def get_or_create_template_state(db: Session):
+    """获取或创建模板状态"""
+    state = db.query(TemplateState).first()
+    if not state:
+        state = TemplateState()
+        db.add(state)
+        db.commit()
+        db.refresh(state)
+    return state
+
+def extract_region_from_title(title: str) -> str:
+    """从标题中提取地区信息"""
+    regions = ['北京', '上海', '广州', '深圳', '杭州', '成都', '武汉', '西安', '南京', '苏州']
+    for region in regions:
+        if region in title:
+            return region
+    return '全国'
+
+def parse_material_title_for_image_text(title: str, text_lines: int) -> List[str]:
+    """解析素材标题，生成图片文字内容"""
+    lines = []
+    
+    # 提取日期
+    date_match = re.search(r'(\d+月\d+日|\d+\/\d+)', title)
+    if date_match:
+        lines.append(date_match.group(1))
+    
+    # 提取地区和企业类型
+    region = extract_region_from_title(title)
+    enterprise_types = ['央企', '国企', '外企', '民企']
+    enterprise_type = '央国企'  # 默认
+    
+    for etype in enterprise_types:
+        if etype in title:
+            enterprise_type = etype
+            break
+    
+    lines.append(f"{region}{enterprise_type}")
+    lines.append("招聘信息差")
+    
+    # 如果是4行模式，添加引导文字
+    if text_lines > 3:
+        lines.append("右划更多👉🏻")
+    
+    return lines[:text_lines]
+
+async def generate_template_content(template: ContentTemplate, material_title: str) -> str:
+    """根据模板生成内容"""
+    content_parts = []
+    
+    # 解析模板数据
+    topic_templates = []
+    if template.topic_templates:
+        try:
+            topic_templates = json.loads(template.topic_templates)
+        except:
+            pass
+    
+    # 生成话题
+    topics = []
+    if topic_templates:
+        # 从模板中随机选择话题
+        selected_topics = random.sample(topic_templates, min(template.topic_count, len(topic_templates)))
+        topics.extend(selected_topics)
+    
+    # 添加固定的地区相关话题
+    region = extract_region_from_title(material_title)
+    topics.append(f"#{region}国企")
+    topics.append(f"#{region}国企招聘")
+    
+    # 组合内容
+    if not template.no_description:
+        description_templates = []
+        if template.description_templates:
+            try:
+                description_templates = json.loads(template.description_templates)
+            except:
+                pass
+        
+        if description_templates and template.use_random_description:
+            content_parts.append(random.choice(description_templates))
+    
+    # 添加话题
+    if topics:
+        content_parts.append(' '.join(topics))
+    
+    return '\n\n'.join(content_parts) if content_parts else ''
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/xiaohongshu-materials", tags=["xiaohongshu-materials"])
+
+class BatchPublishRequest(BaseModel):
+    material_ids: List[int]
+    schedule_publish: bool = False
+    schedule_time: str = None
+    add_product: bool = False
+
+class UpdateAccountRequest(BaseModel):
+    account_id: int
+
+class UpdateTitleRequest(BaseModel):
+    title: str
+
+class UpdateStatusRequest(BaseModel):
+    status: str
+
+class DirectPublishRequest(BaseModel):
+    add_product: bool = False
+    default_mode: str = None
+
+@router.get("")
+async def get_xiaohongshu_materials(
+    status: str = None,
+    db: Session = Depends(get_db)
+):
+    """获取小红书素材列表 - 仿照工作区材料架构"""
+    try:
+        logger.info(f"Getting xiaohongshu materials with status: {status}")
+        
+        # 构建基本查询
+        query = db.query(XiaohongshuMaterial)
+        
+        # 根据状态筛选
+        if status == "published":
+            query = query.filter(XiaohongshuMaterial.status == "published")
+        elif status == "unpublished":
+            query = query.filter(XiaohongshuMaterial.status == "unpublished")
+        elif status == "scheduled":
+            query = query.filter(
+                XiaohongshuMaterial.status == "unpublished",
+                XiaohongshuMaterial.schedule_time != None
+            )
+        
+        # 按ID降序排列
+        materials = query.order_by(XiaohongshuMaterial.id.desc()).all()
+        logger.info(f"Found {len(materials)} materials")
+        
+        # 获取所有小红书账号
+        accounts = db.query(Account).filter(
+            Account.account_type == "小红书",
+            Account.status == "active"
+        ).all()
+        logger.info(f"Found {len(accounts)} active xiaohongshu accounts")
+        
+        # 序列化素材数据
+        serialized_materials = []
+        for material in materials:
+            serialized_materials.append({
+                "id": material.id,
+                "title": material.title,
+                "email_subject": material.email_subject,
+                "folder_path": material.folder_path,
+                "image_count": material.image_count,
+                "status": material.status,
+                "publish_status": material.publish_status,
+                "publish_time": material.publish_time.isoformat() if material.publish_time else None,
+                "account_id": material.account_id,
+                "author_name": None,  # 将在前端处理
+                "account_type": None,  # 将在前端处理
+                "schedule_time": material.schedule_time.isoformat() if material.schedule_time else None,
+                "schedule_status": "scheduled" if material.schedule_time else None,
+                "error_message": material.error_message,
+                "created_at": material.created_at.isoformat() if material.created_at else None
+            })
+        
+        # 序列化账号数据
+        serialized_accounts = []
+        for account in accounts:
+            serialized_accounts.append({
+                "id": account.id,
+                "username": account.username,
+                "author_name": account.author_name,
+                "account_type": account.account_type,
+                "status": account.status
+            })
+        
+        return {
+            "materials": serialized_materials,
+            "accounts": serialized_accounts
+        }
+    except Exception as e:
+        logger.error(f"Error getting xiaohongshu materials: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/fetch-email-materials")
+async def fetch_email_materials(db: Session = Depends(get_db)):
+    """获取邮箱素材 - 从QQ邮箱获取包含'最新招聘信息'的邮件"""
+    from utils.email_handler import fetch_qq_email_materials
+    from datetime import datetime
+    
+    try:
+        # 检查是否有小红书设置
+        settings = db.query(XiaohongshuSettings).first()
+        if not settings or not settings.materials_path:
+            raise HTTPException(status_code=400, detail="请先在设置页面配置小红书素材库路径")
+        
+        if not os.path.exists(settings.materials_path):
+            raise HTTPException(status_code=400, detail="小红书素材库路径不存在")
+        
+        logger.info(f"开始从邮箱获取素材，保存到路径: {settings.materials_path}")
+        
+        # 获取地区账号映射配置
+        region_mapping = {}
+        if settings.region_account_mapping:
+            try:
+                region_mapping = json.loads(settings.region_account_mapping)
+                logger.info(f"获取邮箱素材时应用地区映射配置: {region_mapping}")
+            except:
+                logger.warning("解析地区账号映射配置失败")
+        
+        # 调用邮箱处理函数
+        result = fetch_qq_email_materials(settings.materials_path)
+        
+        if result["success"]:
+            # 重新扫描素材库以更新数据库
+            try:
+                # 获取现有素材，避免重复添加
+                existing_materials = {material.title: material for material in 
+                                    db.query(XiaohongshuMaterial).all()}
+                
+                added_count = 0
+                updated_count = 0
+                
+                # 扫描新创建的文件夹
+                for item in os.listdir(settings.materials_path):
+                    folder_path = os.path.join(settings.materials_path, item)
+                    
+                    if not os.path.isdir(folder_path):
+                        continue
+                    
+                    # 统计图片数量
+                    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+                    image_count = 0
+                    
+                    try:
+                        for file in os.listdir(folder_path):
+                            file_ext = os.path.splitext(file.lower())[1]
+                            if file_ext in image_extensions:
+                                image_count += 1
+                    except:
+                        continue
+                    
+                    folder_name = item
+                    
+                    # 根据地区映射自动分配账号
+                    assigned_account_id = None
+                    for region, account_id in region_mapping.items():
+                        if region in folder_name:
+                            assigned_account_id = account_id
+                            logger.info(f"邮箱素材 '{folder_name}' 匹配地区 '{region}', 自动分配账号ID: {account_id}")
+                            break
+                    
+                    # 检查是否已存在该素材
+                    if folder_name in existing_materials:
+                        # 更新现有素材
+                        material = existing_materials[folder_name]
+                        material.folder_path = folder_path
+                        material.image_count = image_count
+                        # 如果是新的邮件素材，设置邮件标题
+                        if not material.email_subject and "最新招聘信息" in folder_name:
+                            material.email_subject = folder_name
+                        # 应用地区映射分配账号
+                        if assigned_account_id is not None:
+                            material.account_id = assigned_account_id
+                            logger.info(f"更新邮箱素材账号分配: {folder_name} -> 账号ID: {assigned_account_id}")
+                        updated_count += 1
+                    else:
+                        # 创建新素材记录
+                        new_material = XiaohongshuMaterial(
+                            title=folder_name,
+                            folder_path=folder_path,
+                            image_count=image_count,
+                            email_subject=folder_name if "最新招聘信息" in folder_name else None,
+                            status="unpublished",
+                            account_id=assigned_account_id,
+                            created_at=datetime.now()
+                        )
+                        db.add(new_material)
+                        added_count += 1
+                        if assigned_account_id is not None:
+                            logger.info(f"添加新邮箱素材: {folder_name}, 自动分配账号ID: {assigned_account_id}")
+                        else:
+                            logger.info(f"添加新邮箱素材: {folder_name}")
+                
+                # 更新扫描统计
+                total_folders = len([d for d in os.listdir(settings.materials_path) 
+                                   if os.path.isdir(os.path.join(settings.materials_path, d))])
+                settings.total_folders = total_folders
+                settings.last_scan = datetime.now()
+                
+                db.commit()
+                
+                # 合并结果信息
+                all_messages = result["messages"] + [
+                    f"数据库更新完成: 新增 {added_count} 个素材，更新 {updated_count} 个素材"
+                ]
+                
+                return {
+                    "success": True,
+                    "message": f"成功处理 {result['processed_count']} 封邮件，数据库新增 {added_count} 个素材",
+                    "processed_count": result["processed_count"],
+                    "added_count": added_count,
+                    "updated_count": updated_count,
+                    "details": all_messages
+                }
+                
+            except Exception as db_error:
+                logger.error(f"更新数据库时出错: {str(db_error)}")
+                db.rollback()
+                return {
+                    "success": True,  # 邮件处理成功
+                    "message": f"邮件处理成功({result['processed_count']}封)，但数据库更新失败: {str(db_error)}",
+                    "processed_count": result["processed_count"],
+                    "details": result["messages"] + [f"数据库更新失败: {str(db_error)}"]
+                }
+        else:
+            return {
+                "success": False,
+                "message": "未获取到新的邮件素材",
+                "processed_count": 0,
+                "details": result["messages"]
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取邮箱素材时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取邮箱素材失败: {str(e)}")
+
+@router.post("/{material_id}/account")
+async def update_material_account(
+    material_id: int, 
+    request: UpdateAccountRequest,
+    db: Session = Depends(get_db)
+):
+    """更新素材关联的账号"""
+    try:
+        material = db.query(XiaohongshuMaterial).filter(XiaohongshuMaterial.id == material_id).first()
+        if not material:
+            raise HTTPException(status_code=404, detail="素材未找到")
+        
+        # 验证账号存在
+        account = db.query(Account).filter(Account.id == request.account_id).first()
+        if not account:
+            raise HTTPException(status_code=404, detail="账号未找到")
+        
+        # 更新素材的账号
+        material.account_id = request.account_id
+        db.commit()
+        
+        logger.info(f"Updated material {material_id} account to {request.account_id}")
+        return {"success": True, "message": f"已更新账号: {account.username}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating material account: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/{material_id}/title")
+async def update_material_title(
+    material_id: int,
+    request: UpdateTitleRequest,
+    db: Session = Depends(get_db)
+):
+    """更新素材标题"""
+    try:
+        material = db.query(XiaohongshuMaterial).filter(XiaohongshuMaterial.id == material_id).first()
+        if not material:
+            raise HTTPException(status_code=404, detail="素材未找到")
+        
+        material.title = request.title
+        db.commit()
+        
+        logger.info(f"Updated material {material_id} title to: {request.title}")
+        return {"success": True, "message": "标题更新成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating material title: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{material_id}/status") 
+async def update_material_status(
+    material_id: int,
+    request: UpdateStatusRequest,
+    db: Session = Depends(get_db)
+):
+    """更新素材状态"""
+    try:
+        material = db.query(XiaohongshuMaterial).filter(XiaohongshuMaterial.id == material_id).first()
+        if not material:
+            raise HTTPException(status_code=404, detail="素材未找到")
+        
+        material.status = request.status
+        
+        # 如果返回到未发布状态，清除预约时间
+        if request.status == "unpublished":
+            material.schedule_time = None
+            material.publish_time = None
+            material.publish_status = None
+            material.error_message = None
+        
+        db.commit()
+        
+        logger.info(f"Updated material {material_id} status to: {request.status}")
+        return {"success": True, "message": f"状态已更新为: {request.status}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating material status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/publish-batch")
+async def publish_batch_materials(
+    request: BatchPublishRequest,
+    db: Session = Depends(get_db)
+):
+    """批量发布素材 - 使用完整的浏览器自动化发布流程"""
+    try:
+        logger.info(f"Batch publishing {len(request.material_ids)} materials")
+        
+        # 验证所有素材存在且有账号
+        materials = []
+        accounts = {}  # 缓存账号信息
+        
+        for material_id in request.material_ids:
+            material = db.query(XiaohongshuMaterial).filter(XiaohongshuMaterial.id == material_id).first()
+            if not material:
+                raise HTTPException(status_code=404, detail=f"素材 {material_id} 未找到")
+            if not material.account_id:
+                raise HTTPException(status_code=400, detail=f"素材 {material_id} 未分配账号")
+            
+            # 获取账号信息
+            if material.account_id not in accounts:
+                account = db.query(Account).filter(Account.id == material.account_id).first()
+                if not account:
+                    raise HTTPException(status_code=400, detail=f"素材 {material_id} 关联的账号不存在")
+                if not account.browser_id:
+                    raise HTTPException(status_code=400, detail=f"素材 {material_id} 关联的账号未配置浏览器ID")
+                accounts[material.account_id] = account
+            
+            materials.append(material)
+        
+        # 获取通用设置
+        template_state = get_or_create_template_state(db)
+        xiaohongshu_settings = db.query(XiaohongshuSettings).first()
+        
+        # 批量发布处理
+        success_count = 0
+        failed_count = 0
+        details = []
+        
+        for material in materials:
+            try:
+                if request.schedule_publish and request.schedule_time:
+                    # 预约发布 - 只设置时间，不执行实际发布
+                    material.schedule_time = request.schedule_time
+                    material.status = "unpublished"
+                    message = "已设置预约发布"
+                    
+                    success_count += 1
+                    details.append({
+                        "material_id": material.id,
+                        "success": True,
+                        "message": message
+                    })
+                else:
+                    # 立即发布 - 执行实际的浏览器自动化
+                    account = accounts[material.account_id]
+                    
+                    # 1. 应用模板生成内容
+                    content = ""
+                    template_applied = False
+                    
+                    if template_state.content_template_enabled or True:
+                        try:
+                            content_template_result = await apply_content_template_to_material(
+                                material, template_state, db
+                            )
+                            if content_template_result["success"]:
+                                content = content_template_result.get("content", "")
+                                template_applied = True
+                        except Exception as e:
+                            logger.error(f"Content template error for material {material.id}: {str(e)}")
+                    
+                    # 2. 图片模板处理已在前端完成，这里跳过
+                    # 图片模版现在由前端Canvas生成器处理，确保样式一致性
+                    logger.info(f"图片模板处理由前端完成，素材 {material.id} 跳过后端处理")
+                    
+                    # 3. 执行发布
+                    try:
+                        from utils.xiaohongshu_publisher import publish_xiaohongshu_material
+                        
+                        publish_result = await publish_xiaohongshu_material(
+                            material_id=material.id,
+                            material_title=material.title,
+                            folder_path=material.folder_path,
+                            account_id=material.account_id,
+                            browser_id=account.browser_id,
+                            content=content,
+                            add_product=request.add_product
+                        )
+                        
+                        if publish_result["success"]:
+                            material.status = "published"
+                            material.publish_status = "success"
+                            material.publish_time = datetime.now()
+                            material.error_message = None
+                            
+                            if template_state.image_template_enabled and template_state.current_image_template_id:
+                                material.image_template_id = template_state.current_image_template_id
+                                material.template_mode = template_state.image_template_mode
+                            
+                            success_count += 1
+                            message = "发布成功"
+                            if template_applied:
+                                message += "（已应用模板）"
+                                
+                            details.append({
+                                "material_id": material.id,
+                                "success": True,
+                                "message": message
+                            })
+                        else:
+                            material.publish_status = "failed"
+                            material.error_message = publish_result["message"]
+                            failed_count += 1
+                            
+                            details.append({
+                                "material_id": material.id,
+                                "success": False,
+                                "message": f"发布失败: {publish_result['message']}"
+                            })
+                            
+                    except Exception as publish_error:
+                        logger.error(f"Publish error for material {material.id}: {str(publish_error)}")
+                        
+                        material.publish_status = "failed"
+                        material.error_message = str(publish_error)
+                        failed_count += 1
+                        
+                        details.append({
+                            "material_id": material.id,
+                            "success": False,
+                            "message": f"发布过程中出现错误: {str(publish_error)}"
+                        })
+                        
+            except Exception as e:
+                failed_count += 1
+                details.append({
+                    "material_id": material.id,
+                    "success": False,
+                    "message": str(e)
+                })
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"批量发布完成，成功: {success_count}, 失败: {failed_count}",
+            "details": details
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in batch publish: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 模板应用辅助函数
+async def apply_image_template_to_material(
+    material: XiaohongshuMaterial, 
+    template_state: TemplateState, 
+    db: Session
+) -> dict:
+    """为素材应用图片模板"""
+    try:
+        # 获取当前图片模板
+        template = None
+        
+        if template_state.image_template_enabled and template_state.current_image_template_id:
+            template = db.query(ImageTemplate).filter(
+                ImageTemplate.id == template_state.current_image_template_id
+            ).first()
+        else:
+            # 随机选择模板
+            templates = db.query(ImageTemplate).all()
+            if templates:
+                import random
+                template = random.choice(templates)
+        
+        if not template:
+            return {"success": False, "message": "没有可用的图片模板"}
+        
+        # 检查素材文件夹是否存在
+        folder_path = Path(material.folder_path)
+        if not folder_path.exists():
+            return {"success": False, "message": "素材文件夹不存在"}
+        
+        # 获取图片文件
+        image_extensions = {'.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'}
+        image_files = []
+        for ext in image_extensions:
+            image_files.extend(folder_path.glob(f'*{ext}'))
+        
+        if not image_files:
+            return {"success": False, "message": "素材文件夹中没有图片文件"}
+        
+        # 按文件名排序，确保顺序一致
+        image_files.sort(key=lambda x: x.name)
+        
+        # 解析标题生成文字内容
+        text_lines = parse_material_title_for_image_text(material.title, template.text_lines)
+        
+        # 根据模板类型处理
+        if template.template_type == 'overlay':
+            # 覆盖模式：在第一张图片上叠加文字
+            result = await process_overlay_mode(
+                image_files[0], template, text_lines
+            )
+        elif template.template_type == 'insert':
+            # 插入模式：创建新图片并插入到第一位
+            result = await process_insert_mode(
+                folder_path, template, text_lines, image_files
+            )
+        else:
+            return {"success": False, "message": "未知的模板类型"}
+        
+        if result["success"]:
+            # 现在返回配置信息，让前端Canvas处理图片生成
+            return {
+                "success": True, 
+                "message": f"图片模板 '{template.name}' ({template.template_type}模式) 配置已准备",
+                "template_config": result.get("config"),
+                "mode": result.get("mode", template.template_type),
+                "text_lines": result.get("text_lines", text_lines),
+                "target_path": result.get("target_file") if template.template_type == 'overlay' else result.get("target_folder"),
+                "material_id": material.id,
+                "template_name": template.name,
+                # 添加一个标识，表示需要前端处理
+                "requires_frontend_processing": True
+            }
+        else:
+            return result
+            
+    except Exception as e:
+        logger.error(f"Error applying image template: {str(e)}")
+        return {"success": False, "message": f"图片模板应用失败: {str(e)}"}
+
+async def process_overlay_mode(image_file: Path, template: ImageTemplate, text_lines: list) -> dict:
+    """处理覆盖模式 - 在原图上叠加文字"""
+    try:
+        # 现在使用前端Canvas生成图片，并替换原文件
+        
+        # 创建模版配置
+        template_config = {
+            "text_style": template.text_style,
+            "text_color": template.text_color,
+            "font_size": template.font_size,
+            "line_height": float(template.line_height),
+            "mask_opacity": float(template.mask_opacity),
+            "background_style": None,  # 覆盖模式不使用背景样式
+            "custom_background_path": str(image_file)  # 使用原图作为背景
+        }
+        
+        logger.info(f"覆盖模式配置: {template_config}")
+        logger.info(f"文字内容: {text_lines}")
+        
+        return {
+            "success": True, 
+            "message": "覆盖模式配置已准备",
+            "config": template_config,
+            "mode": "overlay",
+            "text_lines": text_lines,
+            "target_file": str(image_file)
+        }
+        
+    except Exception as e:
+        logger.error(f"覆盖模式处理失败: {str(e)}")
+        return {"success": False, "message": f"覆盖模式处理失败: {str(e)}"}
+
+async def process_insert_mode(folder_path: Path, template: ImageTemplate, text_lines: list, existing_images: list) -> dict:
+    """处理插入模式 - 创建新图片插入到第一位"""
+    try:
+        # 现在使用前端Canvas生成图片，并保存到文件夹
+        
+        # 创建模版配置
+        template_config = {
+            "text_style": template.text_style,
+            "text_color": template.text_color,
+            "background_style": template.background_style,
+            "font_size": template.font_size,
+            "line_height": float(template.line_height),
+            "mask_opacity": float(template.mask_opacity),
+            "custom_background_path": template.custom_background_path
+        }
+        
+        logger.info(f"插入模式配置: {template_config}")
+        logger.info(f"文字内容: {text_lines}")
+        
+        return {
+            "success": True, 
+            "message": "插入模式配置已准备",
+            "config": template_config,
+            "mode": "insert", 
+            "text_lines": text_lines,
+            "target_folder": str(folder_path)
+        }
+        
+    except Exception as e:
+        logger.error(f"插入模式处理失败: {str(e)}")
+        return {"success": False, "message": f"插入模式处理失败: {str(e)}"}
+
+async def apply_content_template_to_material(
+    material: XiaohongshuMaterial, 
+    template_state: TemplateState, 
+    db: Session
+) -> dict:
+    """为素材应用内容模板"""
+    try:
+        # 获取当前内容模板
+        template = None
+        
+        if template_state.content_template_enabled and template_state.current_content_template_id:
+            template = db.query(ContentTemplate).filter(
+                ContentTemplate.id == template_state.current_content_template_id
+            ).first()
+        else:
+            # 随机选择模板
+            templates = db.query(ContentTemplate).all()
+            if templates:
+                import random
+                template = random.choice(templates)
+        
+        if not template:
+            return {"success": False, "message": "没有可用的内容模板"}
+        
+        # 生成内容
+        content = await generate_template_content(template, material.title)
+        
+        if content:
+            # 将生成的内容保存到素材记录中（可以扩展XiaohongshuMaterial模型来存储生成的内容）
+            logger.info(f"Generated content for material {material.id}: {content[:100]}...")
+            
+            return {
+                "success": True, 
+                "message": f"内容模板 '{template.name}' 应用成功",
+                "content": content
+            }
+        else:
+            return {"success": False, "message": "内容生成失败"}
+            
+    except Exception as e:
+        logger.error(f"Error applying content template: {str(e)}")
+        return {"success": False, "message": f"内容模板应用失败: {str(e)}"}
+
+@router.post("/{material_id}/direct-publish")
+async def direct_publish_material(
+    material_id: int,
+    request: DirectPublishRequest,
+    db: Session = Depends(get_db)
+):
+    """直接发布单个素材 - 使用完整的浏览器自动化发布流程"""
+    try:
+        material = db.query(XiaohongshuMaterial).filter(XiaohongshuMaterial.id == material_id).first()
+        if not material:
+            raise HTTPException(status_code=404, detail="素材未找到")
+        
+        if not material.account_id:
+            raise HTTPException(status_code=400, detail="请先为素材分配账号")
+        
+        # 获取账号信息
+        account = db.query(Account).filter(Account.id == material.account_id).first()
+        if not account:
+            raise HTTPException(status_code=400, detail="关联的账号不存在")
+        
+        if not account.browser_id:
+            raise HTTPException(status_code=400, detail="账号未配置浏览器ID")
+        
+        # 获取小红书设置
+        xiaohongshu_settings = db.query(XiaohongshuSettings).first()
+        # 从前端请求参数获取是否添加商品的设置
+        add_product = request.add_product
+        logger.info(f"直接发布素材 {material_id}，添加商品设置: {add_product}")
+        
+        # 获取模板状态和生成内容
+        template_state = get_or_create_template_state(db)
+        
+        # 1. 应用图片模板 (如果启用)
+        template_applied = False
+        error_messages = []
+        
+        # 图片模板处理已在前端完成，这里跳过
+        # 图片模版现在由前端Canvas生成器处理，确保样式一致性
+        logger.info(f"图片模板处理由前端完成，素材 {material_id} 跳过后端处理")
+        # 如果有图片模版，标记为已应用
+        if template_state.image_template_enabled and template_state.current_image_template_id:
+            template_applied = True
+        
+        # 2. 生成发布内容 (应用内容模板)
+        content = ""
+        if template_state.content_template_enabled or True:
+            try:
+                content_template_result = await apply_content_template_to_material(
+                    material, template_state, db
+                )
+                if content_template_result["success"]:
+                    content = content_template_result.get("content", "")
+                    template_applied = True
+                    logger.info(f"内容模板应用成功: {content_template_result['message']}")
+                else:
+                    error_messages.append(f"内容模板应用失败: {content_template_result['message']}")
+            except Exception as e:
+                error_messages.append(f"内容模板处理异常: {str(e)}")
+                logger.error(f"Content template error for material {material_id}: {str(e)}")
+        
+        # 3. 执行实际的浏览器发布流程
+        try:
+            from utils.xiaohongshu_publisher import publish_xiaohongshu_material
+            
+            publish_result = await publish_xiaohongshu_material(
+                material_id=material_id,
+                material_title=material.title,
+                folder_path=material.folder_path,
+                account_id=material.account_id,
+                browser_id=account.browser_id,
+                content=content,
+                add_product=add_product
+            )
+            
+            if publish_result["success"]:
+                # 更新数据库状态
+                material.status = "published"
+                material.publish_status = "success"
+                material.publish_time = datetime.now()
+                material.error_message = None
+                
+                # 记录模板应用信息
+                if template_state.image_template_enabled and template_state.current_image_template_id:
+                    material.image_template_id = template_state.current_image_template_id
+                    material.template_mode = template_state.image_template_mode
+                
+                db.commit()
+                
+                response_message = "发布成功"
+                if template_applied:
+                    response_message += "（已应用模板）"
+                if error_messages:
+                    response_message += f"，但模板应用出现警告: {'; '.join(error_messages)}"
+                
+                return {
+                    "success": True,
+                    "message": response_message,
+                    "template_applied": template_applied,
+                    "errors": error_messages if error_messages else None
+                }
+            else:
+                # 发布失败，更新错误状态
+                material.publish_status = "failed"
+                material.error_message = publish_result["message"]
+                db.commit()
+                
+                return {
+                    "success": False,
+                    "message": f"发布失败: {publish_result['message']}",
+                    "template_applied": template_applied,
+                    "errors": error_messages
+                }
+                
+        except Exception as publish_error:
+            logger.error(f"Browser automation publish error: {str(publish_error)}")
+            
+            # 更新错误状态
+            material.publish_status = "failed"
+            material.error_message = str(publish_error)
+            db.commit()
+            
+            return {
+                "success": False,
+                "message": f"发布过程中出现错误: {str(publish_error)}",
+                "template_applied": template_applied,
+                "errors": error_messages
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in direct publish: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/batch-return")
+async def batch_return_to_unpublished(db: Session = Depends(get_db)):
+    """批量返回到未发布状态"""
+    try:
+        # 获取所有已发布的素材
+        published_materials = db.query(XiaohongshuMaterial).filter(
+            XiaohongshuMaterial.status == "published"
+        ).all()
+        
+        count = len(published_materials)
+        for material in published_materials:
+            material.status = "unpublished"
+            material.publish_time = None
+            material.publish_status = None
+            material.error_message = None
+        
+        db.commit()
+        
+        logger.info(f"Batch returned {count} materials to unpublished")
+        return {"success": True, "message": f"已将 {count} 个素材返回到未发布状态"}
+    except Exception as e:
+        logger.error(f"Error in batch return: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/batch-clear")
+async def batch_clear_published(db: Session = Depends(get_db)):
+    """批量清空已发布素材"""
+    try:
+        # 删除所有已发布的素材
+        published_materials = db.query(XiaohongshuMaterial).filter(
+            XiaohongshuMaterial.status == "published"
+        ).all()
+        
+        count = len(published_materials)
+        for material in published_materials:
+            db.delete(material)
+        
+        db.commit()
+        
+        logger.info(f"Batch cleared {count} published materials")
+        return {"success": True, "message": f"已清空 {count} 个已发布素材", "cleared_count": count}
+    except Exception as e:
+        logger.error(f"Error in batch clear: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/batch-cancel-scheduled")
+async def batch_cancel_scheduled(db: Session = Depends(get_db)):
+    """批量取消预约发布"""
+    try:
+        # 获取所有预约发布的素材
+        scheduled_materials = db.query(XiaohongshuMaterial).filter(
+            XiaohongshuMaterial.status == "unpublished",
+            XiaohongshuMaterial.schedule_time != None
+        ).all()
+        
+        count = len(scheduled_materials)
+        for material in scheduled_materials:
+            material.schedule_time = None
+        
+        db.commit()
+        
+        logger.info(f"Batch cancelled {count} scheduled materials")
+        return {"success": True, "message": f"已取消 {count} 个预约发布任务"}
+    except Exception as e:
+        logger.error(f"Error in batch cancel scheduled: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{material_id}")
+async def delete_material(material_id: int, db: Session = Depends(get_db)):
+    """删除素材"""
+    try:
+        material = db.query(XiaohongshuMaterial).filter(XiaohongshuMaterial.id == material_id).first()
+        if not material:
+            raise HTTPException(status_code=404, detail="素材未找到")
+        
+        db.delete(material)
+        db.commit()
+        
+        logger.info(f"Deleted material {material_id}")
+        return {"success": True, "message": "素材已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting material: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
