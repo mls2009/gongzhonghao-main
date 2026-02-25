@@ -388,7 +388,7 @@ def plan_xhs_auto_publish():
         settings = db.query(XiaohongshuSettings).first()
         if not settings:
             return
-        days = getattr(settings, 'publish_days_window', 2) or 2
+        days = getattr(settings, 'publish_days_window', 4) or 4  # 默认取4天内的素材，覆盖周末
         add_product = getattr(settings, 'add_product_enabled', False) or False
         default_mode = getattr(settings, 'default_mode', 'random') or 'random'
         # 收集已配置的时间段
@@ -403,6 +403,16 @@ def plan_xhs_auto_publish():
             return
 
         today = datetime.now()
+        
+        # 根据星期决定使用几个时间窗口：周一发3条（消化周末积累），其他工作日发2条
+        weekday = today.weekday()  # 0=周一, 6=周日
+        if weekday == 0:  # 周一
+            max_per_account = min(3, len(windows))
+            logger.info("[XHS-AUTO] 今天是周一，每账号最多安排3条素材")
+        else:
+            max_per_account = min(2, len(windows))
+            logger.info(f"[XHS-AUTO] 今天是周{weekday+1}，每账号最多安排2条素材")
+        
         # 候选素材：未发布 + 有账号 + 未预约 + 日期在范围内
         candidates = []
         for m in db.query(XiaohongshuMaterial).filter(XiaohongshuMaterial.status=='unpublished').all():
@@ -417,14 +427,14 @@ def plan_xhs_auto_publish():
         # 日期更早优先
         candidates.sort(key=lambda x: x[0])
 
-        # 每账号最多取3个
+        # 每账号最多取 max_per_account 个
         per_acc = {}
         for dt, m in candidates:
             per_acc.setdefault(m.account_id, []).append((dt, m))
 
         scheduled = []
         for acc_id, items in per_acc.items():
-            pick = items[:min(3, len(items))]
+            pick = items[:max_per_account]
             for idx, (dt, m) in enumerate(pick):
                 if idx >= len(windows):
                     break
