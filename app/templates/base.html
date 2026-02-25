@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - 公众号矩阵管理系统</title>
+    <!-- Google Fonts for handwritten styles -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=Kalam:wght@300;400;700&family=Caveat:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=Architects+Daughter&family=Pacifico&family=Shadows+Into+Light&family=Indie+Flower&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('-translate-x-full');
+        }
+    </script>
+</head>
+<body class="bg-gray-100">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="w-64 bg-indigo-700 text-white transition-transform duration-300 ease-in-out transform -translate-x-0 md:translate-x-0">
+            <div class="p-4">
+                <h1 class="text-xl font-bold">公众号矩阵管理</h1>
+            </div>
+            <nav class="mt-4">
+                <a href="/accounts" class="block px-4 py-2 hover:bg-indigo-600">账号列表</a>
+                <a href="/materials" class="block px-4 py-2 hover:bg-indigo-600">素材库</a>
+                <a href="/xiaohongshu-materials" class="block px-4 py-2 hover:bg-indigo-600">小红书素材库</a>
+                <a href="/template-materials" class="block px-4 py-2 hover:bg-indigo-600">素材模板</a>
+                <a href="/publish" class="block px-4 py-2 hover:bg-indigo-600">发布管理</a>
+                <div class="px-4 py-2">
+                    <div class="text-gray-300">数据源采集</div>
+                    <a href="/collect/wechat" class="block pl-4 py-1 hover:bg-indigo-600">公众号采集</a>
+                    <a href="/collect/ai" class="block pl-4 py-1 hover:bg-indigo-600">AI新闻采集</a>
+                    <a href="/collect/twitter" class="block pl-4 py-1 hover:bg-indigo-600">推特采集</a>
+                    <a href="/collect/xiaohongshu" class="block pl-4 py-1 hover:bg-indigo-600">小红书笔记采集</a>
+                    <a href="/collect/toutiao" class="block pl-4 py-1 hover:bg-indigo-600">头条文章采集</a>
+                </div>
+                <a href="/settings" class="block px-4 py-2 hover:bg-indigo-600">设置</a>
+            </nav>
+        </aside>
+
+        <!-- Main content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Top bar -->
+            <header class="bg-white shadow-sm">
+                <div class="flex items-center justify-between p-4">
+                    <button onclick="toggleSidebar()" class="md:hidden p-2">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                    <h2 class="text-xl font-semibold">{{ title }}</h2>
+                    <div></div>
+                </div>
+            </header>
+
+            <!-- Page content -->
+            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100">
+                <div class="container mx-auto px-6 py-8">
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html> 

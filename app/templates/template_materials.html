@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow-sm p-6">
+    <div class="border-b border-gray-200 mb-6">
+        <div class="flex -mb-px">
+            <button onclick="showTab('image-templates')" id="image-templates-tab-button" 
+                    class="tab-button mr-4 py-2 px-4 border-b-2 border-indigo-500 text-indigo-600 font-medium">
+                图片模板
+            </button>
+            <button onclick="showTab('content-templates')" id="content-templates-tab-button" 
+                    class="tab-button py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium">
+                内容模板
+            </button>
+        </div>
+    </div>
+
+    <!-- 图片模板 Tab -->
+    <div id="image-templates-tab" class="tab-content">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- 左侧：模板编辑器 -->
+            <div class="space-y-6">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">图片模板设置</h3>
+                    
+                    <!-- 模板名称 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">模板名称</label>
+                        <input type="text" id="template-name" 
+                               class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                               placeholder="输入模板名称">
+                    </div>
+
+                    <!-- 模板类型选择 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">模板类型</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="radio" name="template-type" value="insert" checked 
+                                       class="text-indigo-600 focus:ring-indigo-500 border-gray-300">
+                                <span class="ml-2 text-sm text-gray-700">
+                                    <strong>插入模式</strong> - 生成新图片作为第一张，原图片作为后续图片
+                                </span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="template-type" value="overlay" 
+                                       class="text-indigo-600 focus:ring-indigo-500 border-gray-300">
+                                <span class="ml-2 text-sm text-gray-700">
+                                    <strong>覆盖模式</strong> - 在第一张图片上覆盖文字样式
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 文字样式选择 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">文字样式</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button class="style-btn active" data-style="gold">金色奢华</button>
+                            <button class="style-btn" data-style="gold_stable">金色沉稳</button>
+                            <button class="style-btn" data-style="handwritten_elegant">优雅手写</button>
+                            <button class="style-btn" data-style="handwritten_warm">温馨手写</button>
+                            <button class="style-btn" data-style="handwritten_flowing">飘逸手写</button>
+                            <button class="style-btn" data-style="handwritten_delicate">清秀手写</button>
+                            <button class="style-btn" data-style="handwritten_playful">俏皮手写</button>
+                            <button class="style-btn" data-style="handwritten_artistic">文艺手写</button>
+                            <button class="style-btn" data-style="handwritten_casual">随性手写</button>
+                        </div>
+                    </div>
+
+                    <!-- 文字颜色选择 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">文字颜色</label>
+                        <div class="flex items-center space-x-3">
+                            <input type="color" id="text-color-picker" value="#2c3e50" 
+                                   class="w-12 h-8 rounded border border-gray-300 cursor-pointer">
+                            <span class="text-sm text-gray-600">选择文字颜色</span>
+                            <button onclick="resetTextColor()" 
+                                    class="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">
+                                重置
+                            </button>
+                        </div>
+                        <div class="mt-2">
+                            <label class="text-xs text-gray-500">常用颜色:</label>
+                            <div class="flex space-x-2 mt-1">
+                                <div class="color-preset w-6 h-6 rounded-full cursor-pointer border border-gray-300" 
+                                     style="background-color: #2c3e50" onclick="setPresetColor('#2c3e50')" title="深蓝灰"></div>
+                                <div class="color-preset w-6 h-6 rounded-full cursor-pointer border border-gray-300" 
+                                     style="background-color: #e74c3c" onclick="setPresetColor('#e74c3c')" title="红色"></div>
+                                <div class="color-preset w-6 h-6 rounded-full cursor-pointer border border-gray-300" 
+                                     style="background-color: #3498db" onclick="setPresetColor('#3498db')" title="蓝色"></div>
+                                <div class="color-preset w-6 h-6 rounded-full cursor-pointer border border-gray-300" 
+                                     style="background-color: #2ecc71" onclick="setPresetColor('#2ecc71')" title="绿色"></div>
+                                <div class="color-preset w-6 h-6 rounded-full cursor-pointer border border-gray-300" 
+                                     style="background-color: #f39c12" onclick="setPresetColor('#f39c12')" title="橙色"></div>
+                                <div class="color-preset w-6 h-6 rounded-full cursor-pointer border border-gray-300" 
+                                     style="background-color: #9b59b6" onclick="setPresetColor('#9b59b6')" title="紫色"></div>
+                                <div class="color-preset w-6 h-6 rounded-full cursor-pointer border border-gray-300" 
+                                     style="background-color: #1abc9c" onclick="setPresetColor('#1abc9c')" title="青绿"></div>
+                                <div class="color-preset w-6 h-6 rounded-full cursor-pointer border border-gray-300" 
+                                     style="background-color: #34495e" onclick="setPresetColor('#34495e')" title="深灰"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 背景样式选择 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">简约风格背景</label>
+                        <div class="grid grid-cols-3 gap-2 mb-3">
+                            <button class="bg-btn active" data-bg="minimal_gradient">🎨 简约渐变</button>
+                            <button class="bg-btn" data-bg="clean_solid">⬜ 纯色背景</button>
+                            <button class="bg-btn" data-bg="subtle_texture">🌫️ 微妙纹理</button>
+                            <button class="bg-btn" data-bg="soft_blur">💫 柔和模糊</button>
+                            <button class="bg-btn" data-bg="geometric_minimal">📐 几何简约</button>
+                            <button class="bg-btn" data-bg="paper_texture">📄 纸质纹理</button>
+                            <button class="bg-btn" data-bg="gradient_fade">🌅 渐变淡出</button>
+                            <button class="bg-btn" data-bg="clean_lines">📏 简洁线条</button>
+                            <button class="bg-btn" data-bg="monochrome">⚫ 单色调</button>
+                            <button class="bg-btn" data-bg="soft_shadow">☁️ 柔和阴影</button>
+                            <button class="bg-btn" data-bg="marble_texture">🪨 大理石纹</button>
+                            <button class="bg-btn" data-bg="pastel_blend">🎀 柔和混合</button>
+                        </div>
+
+                        <!-- 自定义背景 -->
+                        <div class="bg-blue-50 p-3 rounded border">
+                            <h4 class="text-sm font-medium text-gray-700 mb-2">自定义背景</h4>
+                            <!-- 本地文件上传 -->
+                            <input type="file" id="bg-upload" accept="image/*" class="hidden">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:space-x-2 space-y-2 sm:space-y-0">
+                                <button onclick="document.getElementById('bg-upload').click()" 
+                                        class="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700">
+                                    📷 上传背景图片
+                                </button>
+                                <!-- 远程URL输入 -->
+                                <div class="flex-1 flex items-center space-x-2">
+                                    <input id="bg-url-input" type="text" placeholder="或粘贴图片URL (http/https)"
+                                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                    <button onclick="uploadBackgroundFromUrl()" 
+                                            class="bg-indigo-600 text-white px-3 py-2 rounded text-sm hover:bg-indigo-700">
+                                        🌐 使用URL
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">
+                                支持JPG、PNG格式，推荐3:4比例；URL将通过后端代理下载以避免跨域
+                            </div>
+                            <div id="custom-bg-preview" class="mt-2 hidden">
+                                <img id="custom-bg-img" class="w-24 h-32 object-cover rounded border">
+                                <button onclick="removeCustomBackground()" 
+                                        class="ml-2 text-red-600 text-xs hover:text-red-800">移除</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 文本行数选择 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">文本行数</label>
+                        <div class="flex space-x-4">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="text-lines" value="3" checked 
+                                       class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">3行内容</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="text-lines" value="4" 
+                                       class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">4行内容</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 字体和样式控制 -->
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">字体大小</label>
+                            <input type="range" id="font-size" min="20" max="200" value="40" 
+                                   class="w-full" oninput="updateFontSizeValue(this.value)">
+                            <span id="font-size-value" class="text-xs text-gray-500">40px</span>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">行间距</label>
+                            <input type="range" id="line-height" min="1" max="5" step="0.1" value="1.2" 
+                                   class="w-full" oninput="updateLineHeightValue(this.value)">
+                            <span id="line-height-value" class="text-xs text-gray-500">1.2</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">背景遮罩</label>
+                        <input type="range" id="mask-opacity" min="0" max="0.8" step="0.1" value="0" 
+                               class="w-full" oninput="updateMaskOpacityValue(this.value)">
+                        <span id="mask-opacity-value" class="text-xs text-gray-500">0</span>
+                    </div>
+
+                    <!-- 按钮组 -->
+                    <div class="flex space-x-3">
+                        <button onclick="saveTemplate()" 
+                                class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                            保存模板
+                        </button>
+                        <button onclick="downloadImage()" 
+                                class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                            下载图片
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 已保存模板列表 -->
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-lg font-medium text-gray-900">已保存模板</h3>
+                        <div class="flex space-x-2">
+                            <button id="exit-template-btn" onclick="exitCurrentTemplate()" 
+                                    class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700">
+                                退出指定
+                            </button>
+                            <button onclick="loadImageTemplates()" 
+                                    class="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700">
+                                刷新
+                            </button>
+                        </div>
+                    </div>
+                    <div id="template-list" class="space-y-2 max-h-60 overflow-y-auto">
+                        <!-- 模板列表将由JavaScript填充 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：预览画布 -->
+            <div class="space-y-4">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium text-gray-900">预览效果</h3>
+                        <div id="current-image-template" class="text-sm text-gray-600">
+                            当前模板: <span id="current-image-template-name" class="font-medium text-indigo-600">未选择</span>
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <canvas id="preview-canvas" width="300" height="400" 
+                                class="border-2 border-gray-300 rounded-lg shadow-lg mx-auto"></canvas>
+                    </div>
+                </div>
+
+                <!-- 预设文本输入 -->
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h3 class="text-lg font-medium text-gray-900 mb-3">预览文本</h3>
+                    <div class="space-y-2">
+                        <input type="text" id="text-line-1" value="8月30日" placeholder="第一行文字" 
+                               class="w-full rounded border-gray-300 text-sm" oninput="updatePreview()">
+                        <input type="text" id="text-line-2" value="上海央国企" placeholder="第二行文字" 
+                               class="w-full rounded border-gray-300 text-sm" oninput="updatePreview()">
+                        <input type="text" id="text-line-3" value="招聘信息差" placeholder="第三行文字" 
+                               class="w-full rounded border-gray-300 text-sm" oninput="updatePreview()">
+                        <input type="text" id="text-line-4" value="右划更多👉🏻" placeholder="第四行文字" 
+                               class="w-full rounded border-gray-300 text-sm hidden" oninput="updatePreview()">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 内容模板 Tab -->
+    <div id="content-templates-tab" class="tab-content hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- 左侧：内容模板编辑 -->
+            <div class="space-y-6">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">内容模板设置</h3>
+                    
+                    <!-- 模板名称 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">模板名称</label>
+                        <input type="text" id="content-template-name" 
+                               class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                               placeholder="输入内容模板名称">
+                    </div>
+
+                    <!-- 正文描述模板 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">正文描述（固定内容）</label>
+                        <div class="mb-3">
+                            <label class="inline-flex items-center">
+                                <input type="checkbox" id="no-description" 
+                                       class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">不需要正文描述</span>
+                            </label>
+                        </div>
+                        <textarea id="description-templates" rows="4" 
+                                  class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                  placeholder="输入固定的正文描述内容"></textarea>
+                        <div class="text-xs text-gray-500 mt-1">每行一个描述，发布时会按行显示</div>
+                    </div>
+
+                    <!-- 话题模板 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">话题模板库</label>
+                        <div class="mb-3">
+                            <label class="block text-sm font-medium text-gray-600 mb-1">选择话题数量</label>
+                            <input type="number" id="topic-count" value="7" min="1" max="20" 
+                                   class="w-20 rounded border-gray-300 text-sm">
+                            <span class="text-xs text-gray-500 ml-2">默认随机选择7个话题</span>
+                        </div>
+                        <textarea id="topic-templates" rows="6" 
+                                  class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                  placeholder="每行输入一个话题，如：#职场生活 #求职技巧 #面试经验"></textarea>
+                        <div class="text-xs text-gray-500 mt-1">每行输入一个话题，系统会随机选择指定数量的话题</div>
+                    </div>
+
+                    <!-- 按钮组 -->
+                    <div class="flex space-x-3">
+                        <button onclick="saveContentTemplate()" 
+                                class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                            保存模板
+                        </button>
+                        <button onclick="generateContentPreview()" 
+                                class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                            生成预览
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 已保存内容模板列表 -->
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-lg font-medium text-gray-900">已保存内容模板</h3>
+                        <div class="flex space-x-2">
+                            <button id="content-random-mode-btn" onclick="toggleContentRandomMode()" 
+                                    class="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700">
+                                随机模式
+                            </button>
+                            <button onclick="loadContentTemplates()" 
+                                    class="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700">
+                                刷新
+                            </button>
+                        </div>
+                    </div>
+                    <div id="content-template-list" class="space-y-2 max-h-60 overflow-y-auto">
+                        <!-- 内容模板列表将由JavaScript填充 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：内容预览 -->
+            <div class="space-y-4">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium text-gray-900">内容预览</h3>
+                        <div id="current-content-template" class="text-sm text-gray-600">
+                            当前模板: <span id="current-content-template-name" class="font-medium text-indigo-600">未选择</span>
+                        </div>
+                    </div>
+                    <div id="content-preview" class="bg-white p-4 rounded border min-h-48">
+                        <p class="text-gray-500 text-center">选择内容模板后点击"生成预览"查看效果</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 图片模板样式 -->
+<style>
+.style-btn, .bg-btn {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 11px;
+    font-weight: 500;
+    text-align: center;
+    border: 2px solid transparent;
+}
+
+.style-btn {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    color: #333;
+}
+
+.style-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #667eea;
+}
+
+.style-btn.active {
+    transform: scale(1.05);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+    border-color: #667eea;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+}
+
+.bg-btn {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    color: #333;
+}
+
+.bg-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #667eea;
+}
+
+.bg-btn.active {
+    transform: scale(1.02);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.3);
+    border-color: #667eea;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+#preview-canvas {
+    max-width: 100%;
+    height: auto;
+}
+
+.template-item {
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.template-item:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+.template-item.selected {
+    border-color: #667eea;
+    background: #f0f4ff;
+}
+
+.tab-button.border-indigo-500 {
+    border-bottom-color: #6366f1 !important;
+}
+
+.tab-content.hidden {
+    display: none !important;
+}
+</style>
+
+<!-- 引入共享Canvas图片生成器 -->
+<script src="/static/js/canvas-image-generator.js"></script>
+<script src="/static/js/template_materials.js"></script>
+{% endblock %}

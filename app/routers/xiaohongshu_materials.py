@@ -731,9 +731,9 @@ async def apply_image_template_to_material(
         return {"success": False, "message": f"图片模板应用失败: {str(e)}"}
 
 async def process_overlay_mode(image_file: Path, template: ImageTemplate, text_lines: list) -> dict:
-    """处理覆盖模式 - 在原图上叠加文字"""
+    """处理覆盖模式 - 在原图上叠加文字（以原图为背景进行渲染，保存时另存为新首图）"""
     try:
-        # 现在使用前端Canvas生成图片，并替换原文件
+        # 构建配置：使用原图作为背景，由后续渲染器生成图片；保存阶段不再覆盖原文件
         
         # 创建模版配置
         template_config = {
@@ -818,20 +818,70 @@ async def apply_content_template_to_material(
         if not template:
             return {"success": False, "message": "没有可用的内容模板"}
         
-        # 生成内容
-        content = await generate_template_content(template, material.title)
-        
-        if content:
-            # 将生成的内容保存到素材记录中（可以扩展XiaohongshuMaterial模型来存储生成的内容）
-            logger.info(f"Generated content for material {material.id}: {content[:100]}...")
-            
-            return {
-                "success": True, 
-                "message": f"内容模板 '{template.name}' 应用成功",
-                "content": content
-            }
-        else:
-            return {"success": False, "message": "内容生成失败"}
+        # 生成内容（拆分：正文与话题列表），直接使用话题库
+        desc_text = ''
+        topics_list: List[str] = []
+
+        # 解析模板数据
+        topic_templates = []
+        if template.topic_templates:
+            try:
+                topic_templates = json.loads(template.topic_templates)
+            except Exception:
+                topic_templates = []
+
+        # 随机选择话题（来自话题库）
+        if topic_templates:
+            chosen = random.sample(topic_templates, min(template.topic_count, len(topic_templates)))
+            # 规范化：去除首尾空白/全角空格，统一添加单个# 前缀，过滤空值与重复
+            normed = []
+            seen = set()
+            for t in chosen:
+                s = str(t).replace('\u3000', ' ').strip()
+                # 去掉多余的#与空白
+                while s.startswith('#'):
+                    s = s[1:].strip()
+                if not s:
+                    continue
+                final = f'#{s}'
+                if final not in seen:
+                    seen.add(final)
+                    normed.append(final)
+            topics_list = normed
+
+        # 保持之前的行为：追加地区相关话题
+        try:
+            region = extract_region_from_title(material.title)
+            topics_list += [f"#{region}国企", f"#{region}国企招聘"]
+        except Exception:
+            # 标题不匹配时忽略地区话题
+            pass
+
+        # 正文描述（不含话题）
+        if not template.no_description:
+            description_templates = []
+            if template.description_templates:
+                try:
+                    description_templates = json.loads(template.description_templates)
+                except Exception:
+                    description_templates = []
+            if description_templates:
+                if getattr(template, 'use_random_description', True):
+                    desc_text = random.choice(description_templates)
+                else:
+                    # 不随机时，拼接所有描述为正文
+                    desc_text = '\n\n'.join(description_templates)
+
+        # 返回正文与话题列表
+        logger.info(f"Generated description for material {material.id}: {desc_text[:80]}...")
+        logger.info(f"Generated topics for material {material.id}: {topics_list}")
+
+        return {
+            "success": True,
+            "message": f"内容模板 '{template.name}' 应用成功",
+            "content": desc_text,
+            "topics": topics_list
+        }
             
     except Exception as e:
         logger.error(f"Error applying content template: {str(e)}")
@@ -924,6 +974,7 @@ async def direct_publish_material(
                 )
                 if content_template_result["success"]:
                     content = content_template_result.get("content", "")
+                    topics = content_template_result.get("topics", [])
                     template_applied = True
                     logger.info(f"内容模板应用成功: {content_template_result['message']}")
                 else:
@@ -943,6 +994,7 @@ async def direct_publish_material(
                 account_id=material.account_id,
                 browser_id=account.browser_id,
                 content=content,
+                topics=locals().get('topics', []),
                 add_product=add_product
             )
             

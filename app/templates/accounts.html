@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow-sm p-6">
+    <!-- Tabs -->
+    <div class="border-b border-gray-200 mb-6">
+        <div class="flex -mb-px">
+            <button onclick="showTab('accounts')" class="tab-button mr-4 py-2 px-4 border-b-2 border-indigo-500 text-indigo-600 font-medium">
+                账号管理
+            </button>
+            <button onclick="showTab('browsers')" class="tab-button py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium">
+                浏览器管理
+            </button>
+        </div>
+    </div>
+
+    <!-- 账号管理 Tab -->
+    <div id="accounts-tab" class="tab-content">
+        <div class="mb-4 flex justify-between items-center">
+            <h3 class="text-lg font-medium">账号列表</h3>
+            <div class="flex space-x-4">
+                <button onclick="refreshAllAccountsStatus()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                    一键刷新状态
+                </button>
+                <button onclick="showAccountModal()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                    新增账号
+                </button>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">账号名称</th>
+                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">作者名称</th>
+                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">账号类型</th>
+                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">浏览器</th>
+                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">账号主页</th>
+                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">账号状态</th>
+                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for account in accounts %}
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ account.username }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ account.author_name }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ account.account_type }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ account.browser_name }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <span class="homepage-text cursor-pointer" 
+                                  ondblclick="editHomepage(this, {{ account.id }})"
+                                  data-account-id="{{ account.id }}">
+                                {{ account.homepage or '双击编辑' }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="inline-block w-3 h-3 rounded-full {% if account.can_login %}bg-green-500{% else %}bg-red-500{% endif %}"></span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 space-x-3">
+                            <button onclick="openAccount({{ account.id }})" class="text-indigo-600 hover:text-indigo-900">打开</button>
+                            <button onclick="showAccountModal({{ account.id }})" class="text-yellow-600 hover:text-yellow-800">编辑</button>
+                            <button onclick="deleteAccount({{ account.id }})" class="text-red-600 hover:text-red-900">删除</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 浏览器管理 Tab -->
+    <div id="browsers-tab" class="tab-content hidden">
+        <div class="mb-4 flex justify-between items-center">
+            <div class="flex space-x-4">
+                <input type="text" id="browser-search" placeholder="搜索浏览器..." class="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <select id="browser-group" class="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">所有分组</option>
+                </select>
+            </div>
+            <button onclick="createBrowser()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                新增浏览器
+            </button>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">序号</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">浏览器ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">备注</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP地址</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP归属地</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="browser-list" class="bg-white divide-y divide-gray-200">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 账号管理弹窗 -->
+    <div id="account-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg font-medium text-gray-900" id="modal-title">新增账号</h3>
+                <form id="account-form" class="mt-4">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700">用户名</label>
+                        <input type="text" name="username" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700">密码</label>
+                        <input type="password" name="password" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700">作者名称</label>
+                        <input type="text" name="author_name" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700">账号类型</label>
+                        <select name="account_type" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="公众号">公众号</option>
+                            <option value="头条号">头条号</option>
+                            <option value="小红书">小红书</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700">选择浏览器</label>
+                        <select name="browser_id" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">请选择浏览器</option>
+                        </select>
+                    </div>
+                    <div class="mt-5 flex justify-end space-x-3">
+                        <button type="button" onclick="hideAccountModal()"
+                            class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded">
+                            取消
+                        </button>
+                        <button type="submit"
+                            class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                            保存
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let browsersList = [];  // 用于存储浏览器列表
+
+function showTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.add('hidden');
+    });
+    
+    // Show selected tab content
+    document.getElementById(tabName + '-tab').classList.remove('hidden');
+    
+    // Update tab button styles
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('border-indigo-500', 'text-indigo-600');
+        button.classList.add('border-transparent', 'text-gray-500');
+    });
+    
+    // Update clicked tab button style
+    event.currentTarget.classList.remove('border-transparent', 'text-gray-500');
+    event.currentTarget.classList.add('border-indigo-500', 'text-indigo-600');
+
+    // Load browser list when switching to browsers tab
+    if (tabName === 'browsers') {
+        loadBrowsers();
+    }
+}
+
+function loadBrowsers() {
+    console.log('Loading browsers...');
+    const browserList = document.getElementById('browser-list');
+    browserList.innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center">加载中...</td></tr>';
+
+    fetch('/api/browsers/list', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            page: 0,
+            pageSize: 100,
+            platform: '',
+            groupId: '',
+            name: '',
+            status: ''
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP error! status: ${response.status}, message: ${text}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response:', data);
+        if (data.success) {
+            if (!data.data.list || data.data.list.length === 0) {
+                browserList.innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center">没有找到浏览器，请先在BitBrowser中创建浏览器</td></tr>';
+            } else {
+                renderBrowsers(data.data.list);
+                updateGroupSelect(data.data.list);
+            }
+        } else {
+            browserList.innerHTML = `<tr><td colspan="8" class="px-6 py-4 text-center text-red-600">加载失败：${data.message || '未知错误'}</td></tr>`;
+            console.error('Failed to load browsers:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        browserList.innerHTML = `<tr><td colspan="8" class="px-6 py-4 text-center text-red-600">操作失败：${error.message}</td></tr>`;
+    });
+}
+
+function renderBrowsers(browsers) {
+    const tbody = document.getElementById('browser-list');
+    tbody.innerHTML = browsers.map((browser) => `
+        <tr class="hover:bg-gray-50">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${browser.seq || '-'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${browser.id || '-'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${browser.name || '-'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${browser.remark || '-'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${browser.lastIp || '-'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${browser.lastCountry || '-'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <button onclick="openBrowser('${browser.id}')" class="text-indigo-600 hover:text-indigo-900 mr-2">打开浏览器</button>
+                <button onclick="deleteBrowser('${browser.id}')" class="text-red-600 hover:text-red-900">删除</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function updateGroupSelect(browsers) {
+    const groups = [...new Set(browsers.map(b => b.groupId))].filter(g => g);
+    const select = document.getElementById('browser-group');
+    const currentValue = select.value;
+    
+    select.innerHTML = '<option value="">所有分组</option>' + 
+        groups.map(g => `<option value="${g}">${g}</option>`).join('');
+    
+    if (groups.includes(currentValue)) {
+        select.value = currentValue;
+    }
+}
+
+function openBrowser(browserId) {
+    fetch(`/api/browsers/${browserId}/open`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('浏览器已打开');
+        } else {
+            alert('打开浏览器失败：' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('操作失败：' + error);
+    });
+}
+
+function createBrowser() {
+    fetch('/api/browsers/create', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            name: '新浏览器',
+            remark: '',
+            proxyMethod: 2,
+            proxyType: 'noproxy',
+            browserFingerPrint: {
+                coreVersion: '112'
+            }
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadBrowsers();
+        } else {
+            alert('创建浏览器失败：' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('操作失败：' + error);
+    });
+}
+
+function deleteBrowser(browserId) {
+    if (!confirm('确定要删除这个浏览器吗？')) {
+        return;
+    }
+
+    fetch(`/api/browsers/${browserId}/delete`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadBrowsers();
+        } else {
+            alert('删除浏览器失败：' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('操作失败：' + error);
+    });
+}
+
+// 搜索和筛选功能
+document.getElementById('browser-search').addEventListener('input', function(e) {
+    const searchText = e.target.value.toLowerCase();
+    const groupId = document.getElementById('browser-group').value;
+    filterBrowsers(searchText, groupId);
+});
+
+document.getElementById('browser-group').addEventListener('change', function(e) {
+    const searchText = document.getElementById('browser-search').value.toLowerCase();
+    const groupId = e.target.value;
+    filterBrowsers(searchText, groupId);
+});
+
+function filterBrowsers(searchText, groupId) {
+    const rows = document.getElementById('browser-list').getElementsByTagName('tr');
+    for (let row of rows) {
+        const text = row.textContent.toLowerCase();
+        const rowGroupId = row.getAttribute('data-group-id');
+        const matchesSearch = !searchText || text.includes(searchText);
+        const matchesGroup = !groupId || rowGroupId === groupId;
+        row.style.display = matchesSearch && matchesGroup ? '' : 'none';
+    }
+}
+
+// 在页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 如果当前是浏览器管理标签页，加载浏览器列表
+    if (window.location.hash === '#browsers') {
+        showTab('browsers');
+    }
+});
+
+// 显示账号弹窗
+async function showAccountModal(accountId = null) {
+    const modal = document.getElementById('account-modal');
+    const form = document.getElementById('account-form');
+    const modalTitle = document.getElementById('modal-title');
+    
+    // 重置表单
+    form.reset();
+    
+    // 设置标题
+    modalTitle.textContent = accountId ? '编辑账号' : '新增账号';
+    // 记录当前编辑ID
+    form.dataset.accountId = accountId ? String(accountId) : '';
+    
+    // 加载浏览器列表
+    await loadBrowsersForSelect();
+    
+    // 如果是编辑，加载账号数据
+    if (accountId) {
+        const response = await fetch(`/api/accounts/${accountId}`);
+        const data = await response.json();
+        if (data.success) {
+            const account = data.data;
+            form.username.value = account.username;
+            form.password.value = account.password;
+            form.author_name.value = account.author_name;
+            form.account_type.value = account.account_type;
+            if (account.browser_id) {
+                form.browser_id.value = account.browser_id;
+            }
+        }
+    }
+    
+    modal.classList.remove('hidden');
+}
+
+// 隐藏账号弹窗
+function hideAccountModal() {
+    const modal = document.getElementById('account-modal');
+    modal.classList.add('hidden');
+}
+
+// 加载浏览器列表到选择框
+async function loadBrowsersForSelect() {
+    try {
+        const response = await fetch('/api/browsers/list', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                page: 0,
+                pageSize: 100
+            })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            browsersList = data.data.list;  // 保存浏览器列表
+            const select = document.querySelector('select[name="browser_id"]');
+            select.innerHTML = '<option value="">请选择浏览器</option>' +
+                browsersList.map(browser => 
+                    `<option value="${browser.id}">${browser.name}</option>`
+                ).join('');
+        }
+    } catch (error) {
+        console.error('Error loading browsers:', error);
+    }
+}
+
+// 提交账号表单
+document.getElementById('account-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // 获取选中的浏览器名称
+    const selectedBrowser = browsersList.find(b => b.id === this.browser_id.value);
+    const browserName = selectedBrowser ? selectedBrowser.name : '';
+    
+    const formData = {
+        username: this.username.value,
+        password: this.password.value,
+        author_name: this.author_name.value,
+        account_type: this.account_type.value,
+        browser_id: this.browser_id.value,
+        browser_name: browserName,
+        status: 'active'
+    };
+    
+    try {
+        const editId = this.dataset.accountId;
+        const isEdit = !!editId;
+        const url = isEdit ? `/api/accounts/${editId}` : '/api/accounts';
+        const method = isEdit ? 'PUT' : 'POST';
+        const response = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            hideAccountModal();
+            window.location.reload();  // 刷新页面
+        } else {
+            alert('保存失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+});
+
+// 删除账号
+async function deleteAccount(accountId) {
+    if (!confirm('确定要删除这个账号吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/accounts/${accountId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            window.location.reload();  // 刷新页面
+        } else {
+            alert('删除失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+function editHomepage(element, accountId) {
+    const currentText = element.textContent.trim();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentText === '双击编辑' ? '' : currentText;
+    input.className = 'px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-indigo-500';
+    
+    // 替换原有元素
+    element.replaceWith(input);
+    input.focus();
+    
+    // 处理失去焦点和回车事件
+    function handleSave() {
+        const newValue = input.value.trim();
+        updateHomepage(accountId, newValue, element);
+    }
+    
+    input.addEventListener('blur', handleSave);
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleSave();
+        }
+    });
+}
+
+async function updateHomepage(accountId, homepage, originalElement) {
+    try {
+        const response = await fetch(`/api/accounts/${accountId}/homepage`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ homepage })
+        });
+        
+        if (!response.ok) {
+            throw new Error('更新失败');
+        }
+        
+        originalElement.textContent = homepage || '双击编辑';
+        const input = document.querySelector(`input[data-account-id="${accountId}"]`);
+        if (input) {
+            input.replaceWith(originalElement);
+        }
+    } catch (error) {
+        alert('更新失败：' + error.message);
+        const input = document.querySelector(`input[data-account-id="${accountId}"]`);
+        if (input) {
+            input.replaceWith(originalElement);
+        }
+    }
+}
+
+async function openAccount(accountId) {
+    try {
+        const response = await fetch(`/api/accounts/${accountId}/open`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error('打开账号失败');
+        }
+        
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+async function refreshAllAccountsStatus() {
+    const button = document.querySelector('[onclick="refreshAllAccountsStatus()"]');
+    if (!confirm('确定要刷新所有账号状态吗？这可能需要一些时间。')) {
+        return;
+    }
+    
+    try {
+        button.disabled = true;
+        button.classList.add('opacity-50', 'cursor-not-allowed');
+        const originalText = button.textContent;
+        button.textContent = '正在刷新状态...';
+        
+        const response = await fetch('/api/accounts/refresh-status', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (response.ok && data.success) {
+            window.location.reload();
+        } else {
+            throw new Error(data.detail || '刷新状态失败');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('刷新状态失败：' + error.message);
+    } finally {
+        button.disabled = false;
+        button.classList.remove('opacity-50', 'cursor-not-allowed');
+        button.textContent = originalText;
+    }
+}
+</script>
+{% endblock %} 

@@ -559,13 +559,24 @@ async def generate_template_content(template: ContentTemplate, material_title: s
     # 生成话题
     topics = []
     if topic_templates:
+        def _norm_topic(t: str) -> str:
+            s = str(t).replace('\u3000', ' ').strip()
+            while s.startswith('#'):
+                s = s[1:].strip()
+            return f'#{s}' if s else ''
         if for_preview:
-            # 预览时显示所有话题（最多显示前10个）
-            topics.extend(topic_templates[:10])
+            # 预览时显示所有话题（最多显示前10个），并规范化去空格
+            for t in topic_templates[:10]:
+                nt = _norm_topic(t)
+                if nt and nt not in topics:
+                    topics.append(nt)
         else:
-            # 发布时从模板中随机选择话题
+            # 发布时从模板中随机选择话题，并规范化
             selected_topics = random.sample(topic_templates, min(template.topic_count, len(topic_templates)))
-            topics.extend(selected_topics)
+            for t in selected_topics:
+                nt = _norm_topic(t)
+                if nt and nt not in topics:
+                    topics.append(nt)
     
     # 添加固定的地区相关话题（仅发布时添加，预览时不添加）
     if not for_preview:

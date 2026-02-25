@@ -195,6 +195,7 @@ async def toggle_add_product(request: dict, db: Session = Depends(get_db)):
         settings.add_product_enabled = enabled
         settings.updated_at = datetime.now()
     db.commit()
+    logger.info(f"已更新全局添加商品设置: {settings.add_product_enabled}")
     return {"success": True, "add_product_enabled": settings.add_product_enabled}
 
 @router.post("/default-mode")
@@ -232,6 +233,13 @@ async def toggle_auto_publish(toggle: AutoPublishToggle, db: Session = Depends(g
     settings.auto_publish_enabled = bool(toggle.enabled)
     settings.updated_at = datetime.now()
     db.commit()
+    
+    # 强制刷新以获取最新状态，防止会话缓存导致读取到旧的 add_product_enabled
+    db.refresh(settings)
+
+    # Log the status for user visibility
+    add_product_status = "开启" if settings.add_product_enabled else "关闭"
+    logger.info(f"自动发布已{'开启' if settings.auto_publish_enabled else '关闭'}，当前添加商品设置状态: {add_product_status}")
 
     # 更新调度器
     try:

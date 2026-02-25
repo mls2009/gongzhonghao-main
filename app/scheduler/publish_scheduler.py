@@ -428,8 +428,8 @@ def plan_xhs_auto_publish():
                 except Exception:
                     pass
 
-                def _job(material_id=m.id, ap=add_product, dm=default_mode):
-                    run_async(_run_xhs_publish(material_id, ap, dm))
+                def _job(material_id=m.id):
+                    run_async(_run_xhs_publish(material_id))
 
                 scheduler.add_job(_job, 'date', run_date=run_at, id=job_id, replace_existing=True)
                 m.schedule_time = run_at
@@ -442,7 +442,7 @@ def plan_xhs_auto_publish():
     finally:
         db.close()
 
-async def _run_xhs_publish(material_id: int, add_product: bool, default_mode: str):
+async def _run_xhs_publish(material_id: int, add_product: bool = False, default_mode: str = 'random'):
     db = next(get_db())
     try:
         m = db.query(XiaohongshuMaterial).get(material_id)
@@ -451,25 +451,32 @@ async def _run_xhs_publish(material_id: int, add_product: bool, default_mode: st
         acc = db.query(Account).get(m.account_id)
         if not acc:
             return
-        # 每次执行前从设置读取最新的添加商品开关，避免计划阶段固化
+        # 每次执行前从设置读取最新的添加商品开关
         try:
             s = db.query(XiaohongshuSettings).first()
-            if s is not None:
-                add_product = bool(getattr(s, 'add_product_enabled', add_product))
-        except Exception:
-            pass
-        # FORCE enable add_product for verification
-        add_product = True
-        logger.info(f"[XHS-AUTO] 本次发布 add_product={add_product} material_id={material_id}")
+            if s:
+                # 直接读取属性，如果是 None 则视为 False
+                db_setting = s.add_product_enabled
+                add_product = bool(db_setting) if db_setting is not None else False
+                logger.info(f"[XHS-AUTO] 实时读取添加商品设置: {add_product} (DB值: {db_setting})")
+            else:
+                logger.warning("[XHS-AUTO] 未找到设置记录，使用计划时的默认值")
+        except Exception as e:
+            logger.error(f"[XHS-AUTO] 读取设置失败: {e}")
+            # 出错时保留原值，但记录错误
+
+        logger.info(f"[XHS-AUTO] 本次发布最终 add_product={add_product} material_id={material_id}")
         # 模板状态
         tstate = db.query(TemplateState).first()
         # 内容模板
         content = ''
+        topics = []
         try:
             from routers.xiaohongshu_materials import apply_content_template_to_material
             res = await apply_content_template_to_material(m, tstate, db)
             if res.get('success'):
                 content = res.get('content', '')
+                topics = res.get('topics', [])
         except Exception as e:
             logger.error(f"[XHS-AUTO] 内容模板异常: {e}")
         # 图片模板（后端以无头浏览器渲染 Canvas，生成覆盖/插入图片）
@@ -497,16 +504,17 @@ async def _run_xhs_publish(material_id: int, add_product: bool, default_mode: st
                     raise Exception('Headless canvas render failed: invalid data URL')
                 # 保存
                 if mode == 'overlay':
-                    target_file = img_res.get('target_path') or None
-                    if target_file:
-                        save_dataurl_to_file(data_url, target_file)
-                        try:
-                            sz = os.path.getsize(target_file)
-                            logger.info(f"[XHS-AUTO] 覆盖图片已保存: {target_file} size={sz}")
-                            if sz <= 0:
-                                raise Exception('saved overlay image size=0')
-                        except Exception as e:
-                            raise Exception(f'overlay save verify failed: {e}')
+                    # 修改为非破坏式：复制第一张为背景，生成覆盖图片作为新的第一张
+                    folder = m.folder_path
+                    out = os.path.join(folder, '00_template_generated.png')
+                    save_dataurl_to_file(data_url, out)
+                    try:
+                        sz = os.path.getsize(out)
+                        logger.info(f"[XHS-AUTO] 覆盖图片已保存为新首图: {out} size={sz}")
+                        if sz <= 0:
+                            raise Exception('saved overlay image size=0')
+                    except Exception as e:
+                        raise Exception(f'overlay save verify failed: {e}')
                 else:
                     folder = img_res.get('target_path') or m.folder_path
                     out = os.path.join(folder, '00_template_generated.png')
@@ -533,6 +541,7 @@ async def _run_xhs_publish(material_id: int, add_product: bool, default_mode: st
                 account_id=m.account_id,
                 browser_id=acc.browser_id,
                 content=content,
+                topics=topics,
                 add_product=add_product
             )
             if result.get('success'):

@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow-sm p-6">
+    <h2 class="text-xl font-semibold mb-6">系统设置</h2>
+    
+    <div class="space-y-6">
+        <!-- 素材库位置设置 -->
+        <div>
+            <h3 class="text-lg font-medium text-gray-900 mb-4">素材库位置</h3>
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <div class="flex items-center space-x-4 mb-4">
+                    <input type="text" id="materials-path" 
+                           class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                           value="{{ settings.materials_path if settings.materials_path else '' }}"
+                           readonly>
+                    <button onclick="selectFolder()" 
+                            class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                        选择文件夹
+                    </button>
+                </div>
+                <p class="text-sm text-gray-500">
+                    选择包含 .docx 文件的文件夹作为素材库位置。系统会自动扫描该文件夹下的所有 Word 文档作为素材。
+                </p>
+            </div>
+        </div>
+
+        <!-- 当前素材库统计 -->
+        <div>
+            <h3 class="text-lg font-medium text-gray-900 mb-4">素材库统计</h3>
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-500">文档总数</p>
+                        <p class="text-2xl font-semibold text-gray-900">{{ stats.total_files if stats else 0 }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">最后更新时间</p>
+                        <p class="text-sm text-gray-900">{{ stats.last_update.strftime('%Y-%m-%d %H:%M:%S') if stats and stats.last_update else '未更新' }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="flex justify-end space-x-4">
+            <button onclick="scanMaterials()" 
+                    class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                扫描素材库
+            </button>
+            <button onclick="savePath()" 
+                    class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                保存设置
+            </button>
+        </div>
+
+        <!-- 小红书素材库设置 -->
+        <div>
+            <h3 class="text-lg font-medium text-gray-900 mb-4">小红书素材库设置</h3>
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <!-- 素材库路径 -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">素材库路径</label>
+                    <div class="flex items-center space-x-4">
+                        <input type="text" id="xiaohongshu-materials-path" 
+                               class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                               readonly>
+                        <button onclick="selectXiaohongshuFolder()" 
+                                class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                            选择文件夹
+                        </button>
+                    </div>
+                </div>
+
+
+                <!-- 地区账号映射 -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">地区账号映射关系</label>
+                    <div id="region-mapping-container"></div>
+                    <div class="mt-2">
+                        <button type="button" onclick="addRegionMapping()" class="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700">
+                            添加新规则
+                        </button>
+                    </div>
+                    <div class="mt-2 text-sm text-gray-500">
+                        示例：广东,浙江,江苏 → 账号A，系统会自动匹配素材标题中包含这些地区关键字的素材
+                    </div>
+                </div>
+
+                <!-- 自动发布设置 -->
+                <div class="bg-white p-4 rounded-lg border mb-4">
+                    <h4 class="text-md font-medium text-gray-900 mb-3">自动发布设置</h4>
+                    <div class="grid grid-cols-3 gap-4 items-start">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">每日触发时间</label>
+                            <input type="time" id="xhs-auto-publish-time" class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <p class="text-xs text-gray-500 mt-1">24小时制，例如 09:00</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">发布日期范围（天）</label>
+                            <input type="number" id="xhs-publish-days-window" min="1" value="2" class="w-24 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <p class="text-xs text-gray-500 mt-1">例如 2 表示今天起 2 天内的素材（含）</p>
+                        </div>
+                        <div class="col-span-3">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">时间段设置（最多3个）</label>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="flex items-center space-x-2">
+                                    <input type="time" id="xhs-window1-start" class="rounded-md border-gray-300 shadow-sm">
+                                    <span class="text-sm">到</span>
+                                    <input type="time" id="xhs-window1-end" class="rounded-md border-gray-300 shadow-sm">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="time" id="xhs-window2-start" class="rounded-md border-gray-300 shadow-sm">
+                                    <span class="text-sm">到</span>
+                                    <input type="time" id="xhs-window2-end" class="rounded-md border-gray-300 shadow-sm">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="time" id="xhs-window3-start" class="rounded-md border-gray-300 shadow-sm">
+                                    <span class="text-sm">到</span>
+                                    <input type="time" id="xhs-window3-end" class="rounded-md border-gray-300 shadow-sm">
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">每个账号在一次任务中最多3篇，按顺序映射到上述时间段并在各自时间段内随机时间发布</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 小红书素材库统计 -->
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <p class="text-sm text-gray-500">素材总数</p>
+                        <p class="text-xl font-semibold text-gray-900" id="xiaohongshu-total-materials">0</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">最后扫描时间</p>
+                        <p class="text-sm text-gray-900" id="xiaohongshu-last-scan">未扫描</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">邮箱地址</p>
+                        <p class="text-sm text-gray-900">192288138@qq.com</p>
+                    </div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="flex justify-end space-x-4">
+                    <button onclick="scanXiaohongshuMaterials()" 
+                            class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                        扫描素材库
+                    </button>
+                    <button onclick="saveXiaohongshuSettings()" 
+                            class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                        保存设置
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function selectFolder() {
+    try {
+        const response = await fetch('/api/settings/select-folder', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('materials-path').value = data.path;
+        } else {
+            alert('选择文件夹失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function savePath() {
+    const path = document.getElementById('materials-path').value;
+    if (!path) {
+        alert('请先选择素材库位置');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/settings/save-path', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ materials_path: path })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('设置保存成功！');
+        } else {
+            alert('保存失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function scanMaterials() {
+    const path = document.getElementById('materials-path').value;
+    if (!path) {
+        alert('请先选择并保存素材库位置');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/settings/scan-materials', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('扫描完成！发现 ' + data.total_files + ' 个文档');
+            window.location.reload();  // 刷新页面以更新统计信息
+        } else {
+            alert('扫描失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+// 小红书素材库相关函数
+let xiaohongshuAccounts = [];
+let regionMappings = [];
+
+// 页面加载时获取小红书配置
+document.addEventListener('DOMContentLoaded', function() {
+    loadXiaohongshuConfig();
+});
+
+async function loadXiaohongshuConfig() {
+    try {
+        const response = await fetch('/api/xiaohongshu-settings/config');
+        const data = await response.json();
+        
+        // 修复：API直接返回配置数据，不是嵌套在settings字段中
+        document.getElementById('xiaohongshu-materials-path').value = data.materials_path || '';
+        regionMappings = data.region_account_mapping || {};
+        // 自动发布时间
+        if (data.auto_publish_time) {
+            document.getElementById('xhs-auto-publish-time').value = data.auto_publish_time;
+        }
+        // 发布窗口
+        if (typeof data.publish_days_window !== 'undefined') {
+            document.getElementById('xhs-publish-days-window').value = data.publish_days_window || 2;
+        }
+        ['1','2','3'].forEach(i => {
+            const s = data[`window${i}_start`] || '';
+            const e = data[`window${i}_end`] || '';
+            const sEl = document.getElementById(`xhs-window${i}-start`);
+            const eEl = document.getElementById(`xhs-window${i}-end`);
+            if (sEl) sEl.value = s || '';
+            if (eEl) eEl.value = e || '';
+        });
+        
+        // 获取小红书账号列表（用于地区映射）
+        try {
+            const materialsResponse = await fetch('/api/xiaohongshu-materials');
+            const materialsData = await materialsResponse.json();
+            if (materialsData.accounts) {
+                xiaohongshuAccounts = materialsData.accounts;
+                renderRegionMappings();
+            }
+        } catch (accountError) {
+            console.log('获取账号列表失败:', accountError);
+            xiaohongshuAccounts = [];
+            renderRegionMappings();
+        }
+        
+        // 获取统计信息
+        const statsResponse = await fetch('/api/xiaohongshu-settings/stats');
+        const statsData = await statsResponse.json();
+        
+        document.getElementById('xiaohongshu-total-materials').textContent = statsData.total_folders || 0;
+        document.getElementById('xiaohongshu-last-scan').textContent = 
+            statsData.last_scan ? new Date(statsData.last_scan).toLocaleString() : '未扫描';
+        
+    } catch (error) {
+        console.error('Error loading config:', error);
+        // 即使加载失败，也要渲染映射界面
+        renderRegionMappings();
+    }
+}
+
+async function selectXiaohongshuFolder() {
+    try {
+        const response = await fetch('/api/xiaohongshu-settings/select-folder', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('xiaohongshu-materials-path').value = data.path;
+        } else {
+            alert('选择文件夹失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function saveXiaohongshuSettings() {
+    const path = document.getElementById('xiaohongshu-materials-path').value;
+    
+    if (!path) {
+        alert('请先选择小红书素材库位置');
+        return;
+    }
+    
+    // 保存前先更新映射关系
+    updateRegionMappings();
+    
+    console.log('准备保存的映射关系:', regionMappings);
+    
+    try {
+        const autoTime = document.getElementById('xhs-auto-publish-time').value || null;
+        const daysWindow = parseInt(document.getElementById('xhs-publish-days-window').value || '2', 10);
+        const payload = {
+            materials_path: path,
+            region_account_mapping: regionMappings,
+            auto_publish_time: autoTime,
+            publish_days_window: isNaN(daysWindow) ? 2 : daysWindow,
+            window1_start: document.getElementById('xhs-window1-start').value || null,
+            window1_end: document.getElementById('xhs-window1-end').value || null,
+            window2_start: document.getElementById('xhs-window2-start').value || null,
+            window2_end: document.getElementById('xhs-window2-end').value || null,
+            window3_start: document.getElementById('xhs-window3-start').value || null,
+            window3_end: document.getElementById('xhs-window3-end').value || null
+        };
+
+        // 统一通过 /config 保存（包含路径、地区映射、自动时间）
+        const configResponse = await fetch('/api/xiaohongshu-settings/config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const configData = await configResponse.json();
+        console.log('配置保存结果:', configData);
+
+        if (configResponse.ok && configData.success) {
+            alert('设置保存成功！');
+        } else {
+            alert('保存失败: ' + (configData.message || '未知错误'));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function scanXiaohongshuMaterials() {
+    const path = document.getElementById('xiaohongshu-materials-path').value;
+    if (!path) {
+        alert('请先选择并保存小红书素材库位置');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/xiaohongshu-settings/scan-materials', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('扫描完成！发现 ' + data.new_count + ' 个新素材');
+            loadXiaohongshuConfig();  // 重新加载统计信息
+        } else {
+            alert('扫描失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+function updateAccountSelects() {
+    const selects = document.querySelectorAll('.account-select');
+    selects.forEach(select => {
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">选择账号</option>';
+        
+        xiaohongshuAccounts.forEach(account => {
+            const option = document.createElement('option');
+            option.value = account.id;
+            option.textContent = account.username;
+            if (account.id == currentValue) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+    });
+}
+
+function renderRegionMappings() {
+    const container = document.getElementById('region-mapping-container');
+    container.innerHTML = '';
+    
+    // 渲染现有映射
+    Object.entries(regionMappings).forEach(([regions, accountId]) => {
+        addRegionMappingRow(regions, accountId);
+    });
+    
+    // 如果没有映射规则，添加一个空行
+    if (Object.keys(regionMappings).length === 0) {
+        addRegionMappingRow('', '');
+    }
+}
+
+function addRegionMappingRow(regions = '', accountId = '') {
+    const container = document.getElementById('region-mapping-container');
+    const div = document.createElement('div');
+    div.className = 'region-mapping-item mb-3 p-3 border border-gray-200 rounded-lg bg-gray-50';
+    
+    div.innerHTML = `
+        <div class="grid grid-cols-4 gap-4 items-center">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">地区关键字</label>
+                <input type="text" class="region-input w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                       placeholder="广东,浙江,江苏" value="${regions}" onchange="updateRegionMappings()">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">对应账号</label>
+                <select class="account-select w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" onchange="updateRegionMappings()">
+                    <option value="">选择账号</option>
+                    ${xiaohongshuAccounts.map(account => 
+                        `<option value="${account.id}" ${account.id == accountId ? 'selected' : ''}>${account.username}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">匹配规则</label>
+                <div class="text-sm text-gray-500">标题包含任一关键字</div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">操作</label>
+                <button type="button" onclick="removeRegionMapping(this)" class="bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700 w-full">
+                    删除规则
+                </button>
+            </div>
+        </div>
+    `;
+    
+    container.appendChild(div);
+}
+
+async function addRegionMapping() {
+    // 先更新当前的映射关系
+    updateRegionMappings();
+    
+    // 立即保存映射关系到数据库
+    try {
+        const mappingResponse = await fetch('/api/xiaohongshu-settings/region-account-mapping', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                region_account_mapping: regionMappings
+            })
+        });
+        
+        const mappingData = await mappingResponse.json();
+        
+        if (mappingData.success) {
+            console.log('地区映射规则已保存到数据库');
+            // 然后添加新的空行
+            addRegionMappingRow('', '');
+        } else {
+            alert('保存地区映射规则失败: ' + (mappingData.message || '未知错误'));
+        }
+    } catch (error) {
+        console.error('保存地区映射规则时出错:', error);
+        alert('保存地区映射规则时出错: ' + error.message);
+    }
+}
+
+function removeRegionMapping(button) {
+    const item = button.closest('.region-mapping-item');
+    item.remove();
+    updateRegionMappings();
+}
+
+function updateRegionMappings() {
+    const mappingItems = document.querySelectorAll('.region-mapping-item');
+    regionMappings = {};
+    
+    mappingItems.forEach(item => {
+        const regionInput = item.querySelector('.region-input');
+        const accountSelect = item.querySelector('.account-select');
+        
+        const regions = regionInput.value.trim();
+        const accountId = accountSelect.value;
+        
+        if (regions && accountId) {
+            regionMappings[regions] = parseInt(accountId);
+        }
+    });
+    
+    console.log('更新后的地区映射:', regionMappings);
+}
+</script>
+{% endblock %} 

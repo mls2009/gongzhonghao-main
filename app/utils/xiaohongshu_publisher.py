@@ -211,7 +211,7 @@ class XiaohongshuPublisher:
         步骤5: 填写标题
         标题格式: "日期+地区+央国企招聘信息差"
         例如: 2025年上海央国企最新招聘信息（9月5日） -> 9月5日上海央国企招聘信息差
-        元素: <input class="d-text" type="text" placeholder="填写标题会有更多赞哦～" value="">
+        元素: <input class="d-text" type="text" placeholder="填写标题会有更多赞哦" value="">
         """
         try:
             logger.info(f"步骤5: 填写标题，原标题: {material_title}")
@@ -224,7 +224,7 @@ class XiaohongshuPublisher:
             logger.info(f"生成的发布标题: {publish_title}")
             
             # 找到标题输入框并填写
-            title_input = self.page.locator('input.d-text[type="text"][placeholder="填写标题会有更多赞哦～"]')
+            title_input = self.page.locator('input.d-text[type="text"][placeholder="填写标题会有更多赞哦"]')
             await title_input.fill(publish_title)
             
             logger.info("成功填写标题")
@@ -246,7 +246,7 @@ class XiaohongshuPublisher:
             # 等待随机1-3秒
             await self._random_wait()
             
-            # 找到内容编辑框并填写
+            # 找到内容编辑框并填写正文（不包含话题）
             content_editor = self.page.locator('div.tiptap.ProseMirror[contenteditable="true"]')
             await content_editor.fill(content)
             
@@ -255,6 +255,85 @@ class XiaohongshuPublisher:
             
         except Exception as e:
             logger.error(f"填写正文描述失败: {str(e)}")
+            return False
+
+    def _split_content_and_topics(self, content: str) -> (str, List[str]):
+        """从组合内容中拆分正文与话题列表。
+        规则：提取形如 #话题 的片段作为话题，其余作为正文（保留原有换行）。
+        """
+        try:
+            # 抓取所有以 # 开头、以空白或行尾结束的片段
+            hashtags = re.findall(r"#([^\s#]+)", content)
+            topics = [f"#{h.strip()}" for h in hashtags if h.strip()]
+            # 去除话题文本，余下作为正文
+            desc = content
+            for t in topics:
+                desc = desc.replace(t, "")
+            # 规范化正文（去掉多余空格）但保留换行
+            desc = re.sub(r"[ \t]{2,}", " ", desc).strip()
+            return desc, topics
+        except Exception:
+            return content, []
+
+    async def type_topics(self, topics: List[str]) -> bool:
+        """逐个输入话题：输入 '#话题' -> 随机等待3-5秒 -> 回车，直到所有话题输入完成。
+        在输入前将光标移动到正文末尾，并先回车新起一段；
+        额外加 End/Meta+End 与点击最后块元素以增强稳健性。
+        """
+        try:
+            if not topics:
+                return True
+            editor = self.page.locator('div.tiptap.ProseMirror[contenteditable="true"]')
+            await editor.scroll_into_view_if_needed()
+            await editor.click()  # 聚焦到编辑器
+
+            # 将光标移动到正文末尾，并另起一段
+            try:
+                handle = await editor.element_handle()
+                if handle:
+                    await self.page.evaluate(
+                        "(el) => { el.focus(); const range = document.createRange(); range.selectNodeContents(el); range.collapse(false); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); }",
+                        handle
+                    )
+                    # 尝试将光标进一步推到末尾（不同环境兼容）
+                    try:
+                        await self.page.keyboard.press('End')
+                    except Exception:
+                        pass
+                    try:
+                        # macOS 兼容键
+                        await self.page.keyboard.press('Meta+End')
+                    except Exception:
+                        pass
+                    # 尝试点击最后一个块级子元素，确保定位在最后
+                    try:
+                        last_block = editor.locator(':scope > *:last-child')
+                        if await last_block.count() > 0:
+                            await last_block.first.scroll_into_view_if_needed()
+                            await last_block.first.click(position={"x": 1, "y": 1})
+                            try:
+                                await self.page.keyboard.press('End')
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    await self.page.keyboard.press('Enter')
+            except Exception as e:
+                logger.warning(f"设置光标到末尾失败，继续尝试输入话题: {e}")
+            for t in topics:
+                # 规范化单个话题，去除首尾空白/全角空格，确保单个#前缀
+                s = str(t).replace('\u3000', ' ').strip()
+                while s.startswith('#'):
+                    s = s[1:].strip()
+                if not s:
+                    continue
+                topic_text = f'#{s}'
+                await editor.type(topic_text)
+                await asyncio.sleep(random.uniform(3, 5))
+                await self.page.keyboard.press('Enter')
+            return True
+        except Exception as e:
+            logger.error(f"输入话题失败: {str(e)}")
             return False
     
     async def add_product_if_enabled(self, region: str, add_product: bool) -> bool:
@@ -507,6 +586,7 @@ async def publish_xiaohongshu_material(
     account_id: int,
     browser_id: str,
     content: str,
+    topics: Optional[List[str]] = None,
     add_product: bool = False
 ) -> Dict[str, Any]:
     """
@@ -549,9 +629,18 @@ async def publish_xiaohongshu_material(
         if not await publisher.fill_title(material_title):
             return {"success": False, "message": "填写标题失败"}
         
-        # 步骤6: 填写正文描述
-        if not await publisher.fill_content_description(content):
+        # 步骤6: 填写正文描述 + 分步输入话题
+        # 优先使用外部传入的话题列表；若未提供，则从 content 中解析
+        desc_text = content
+        topics_list: List[str] = topics or []
+        if not topics_list:
+            desc_text, topics_list = publisher._split_content_and_topics(content)
+        if not await publisher.fill_content_description(desc_text):
             return {"success": False, "message": "填写正文描述失败"}
+        if topics_list:
+            ok_topics = await publisher.type_topics(topics_list)
+            if not ok_topics:
+                return {"success": False, "message": "输入话题失败"}
         
         # 步骤7: 根据设置添加商品(可选)
         region = publisher._extract_region_from_title(material_title)

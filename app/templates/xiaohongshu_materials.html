@@ -1,0 +1,1462 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow-sm p-6">
+    {% if error %}
+    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+        <strong class="font-bold">错误！</strong>
+        <span class="block sm:inline">{{ error }}</span>
+    </div>
+    {% endif %}
+
+    <!-- Tabs -->
+    <div class="border-b border-gray-200 mb-6">
+        <div class="flex -mb-px">
+            <button onclick="showTab('unpublished')" id="unpublished-tab-button" class="tab-button mr-4 py-2 px-4 border-b-2 border-indigo-500 text-indigo-600 font-medium">
+                未发布
+            </button>
+            <button onclick="showTab('published')" id="published-tab-button" class="tab-button py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium">
+                已发布
+            </button>
+            <button onclick="showTab('scheduled')" id="scheduled-tab-button" class="tab-button py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium">
+                预约发布
+            </button>
+        </div>
+    </div>
+
+    <!-- 未发布 Tab -->
+    <div id="unpublished-tab" class="tab-content">
+        <div class="mb-4 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="schedule_publish" class="sr-only peer" onchange="toggleScheduleTime(this)">
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    <span class="ml-3 text-sm font-medium text-gray-900">预约发布</span>
+                </label>
+                
+                <div id="schedule_time_container" class="hidden">
+                    <input type="datetime-local" 
+                           id="schedule_time" 
+                           class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                           ondblclick="this.readOnly=false"
+                           onblur="this.readOnly=true">
+                </div>
+
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="add_product_toggle" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                    <span class="ml-3 text-sm font-medium text-gray-900">添加商品</span>
+                </label>
+
+                <!-- 全局模式选择 -->
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm font-medium text-gray-900">默认模式:</span>
+                    <div class="flex space-x-1">
+                        <button id="global-insert-btn" onclick="setGlobalMode('insert')" 
+                                class="global-mode-btn px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">
+                            插入
+                        </button>
+                        <button id="global-random-btn" onclick="setGlobalMode('random')" 
+                                class="global-mode-btn px-2 py-1 text-xs rounded bg-green-500 text-white">
+                            随机
+                        </button>
+                        <button id="global-overlay-btn" onclick="setGlobalMode('overlay')" 
+                                class="global-mode-btn px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">
+                            覆盖
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 状态指示器 -->
+                <div class="flex items-center">
+                    <span class="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800" id="template-status">
+                        未指定模板
+                    </span>
+                </div>
+
+                <button onclick="fetchEmailMaterials()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                    获取邮箱素材
+                </button>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button id="auto-publish-btn" onclick="toggleAutoPublish()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                    自动发布
+                </button>
+                <button onclick="publishSelected()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                    一键发布
+                </button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                            <div class="flex items-center">
+                                <input type="checkbox" id="select-all" onchange="toggleSelectAll(this)">
+                                <span class="selection-order ml-2 hidden"></span>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onclick="sortMaterials('title')">
+                            素材标题
+                            <span id="sort-title" class="ml-1"></span>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onclick="sortMaterials('region')">
+                            地区
+                            <span id="sort-region" class="ml-1"></span>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onclick="sortMaterials('date')">
+                            日期
+                            <span id="sort-date" class="ml-1"></span>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">图片数量</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onclick="sortMaterials('accountType')">
+                            账号名称
+                            <span id="sort-accountType" class="ml-1"></span>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="unpublished-list" class="bg-white divide-y divide-gray-200">
+                    <!-- 动态内容将由 JavaScript 填充 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 已发布 Tab -->
+    <div id="published-tab" class="tab-content hidden">
+        <div class="mb-4 flex justify-between items-center">
+            <div class="flex space-x-2">
+                <button onclick="batchReturnToUnpublished()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                    一键返回
+                </button>
+                <button onclick="batchClearPublished()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                    一键清空
+                </button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">发布时间</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">素材标题</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">图片数量</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">发布账号</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">发布状态</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="published-list" class="bg-white divide-y divide-gray-200">
+                    <!-- 动态内容将由 JavaScript 填充 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 预约发布 Tab -->
+    <div id="scheduled-tab" class="tab-content hidden">
+        <div class="mb-4 flex justify-between items-center">
+            <button onclick="batchCancelSchedule()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                取消预约
+            </button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">预约时间</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">素材标题</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">图片数量</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">发布账号</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">预约状态</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduled-list" class="bg-white divide-y divide-gray-200">
+                    <!-- 动态内容将由 JavaScript 填充 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 引入共享Canvas图片生成器 -->
+<script src="/static/js/canvas-image-generator.js"></script>
+
+<script>
+// 全局变量 - 采用工作区素材库架构
+let selectedMaterials = new Map();  // 使用Map存储选中的素材ID和顺序
+let currentSort = {
+    field: null,
+    order: 'asc'
+};
+let accounts = JSON.parse('{{ accounts|tojson|safe }}');  // 从服务端获取账号数据
+let materials = [];
+let regionAccountMapping = {}; // 地区账号映射关系
+
+// 全局默认模式
+let globalDefaultMode = 'random';
+let xhsEventSource = null;
+
+// 从标题中提取地区和日期
+function extractRegionAndDate(title) {
+    try {
+        // 匹配格式：2025年XX央国企最新招聘信息（XX日）
+        const match = title.match(/(\d+年)(.+?)(央国企.*?（(.+?)）)/);
+        if (match) {
+            const region = match[2].trim(); // 提取地区
+            const dateInParentheses = match[4].trim(); // 提取括号中的日期
+            return { region, date: dateInParentheses };
+        }
+        
+        // 备用匹配方案
+        const regionMatch = title.match(/年(.+?)央国企/);
+        const dateMatch = title.match(/（(.+?)）/);
+        
+        return {
+            region: regionMatch ? regionMatch[1] : '-',
+            date: dateMatch ? dateMatch[1] : '-'
+        };
+    } catch (error) {
+        console.error('提取地区和日期失败:', error);
+        return { region: '-', date: '-' };
+    }
+}
+
+// 解析日期字符串用于排序
+function parseDate(dateStr) {
+    if (!dateStr || dateStr === '-') return new Date(0);
+    
+    try {
+        // 匹配格式：9月5日
+        const match = dateStr.match(/(\d+)月(\d+)日/);
+        if (match) {
+            const month = parseInt(match[1]);
+            const day = parseInt(match[2]);
+            // 假设是2025年
+            return new Date(2025, month - 1, day);
+        }
+        return new Date(0);
+    } catch (error) {
+        return new Date(0);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('页面加载完成，开始初始化...');
+    showTab('unpublished');
+    loadRegionMapping();
+    checkTemplateStatus();
+    // 同步全局添加商品开关状态
+    syncAddProductToggleFromServer();
+    
+    // 定期检查模板状态（每30秒）
+    setInterval(checkTemplateStatus, 30000);
+    
+    // 初始化预约发布时间
+    const scheduleTimeInput = document.getElementById('schedule_time');
+    if (scheduleTimeInput) {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        scheduleTimeInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+        scheduleTimeInput.readOnly = true;
+    }
+    
+    // 清空选择
+    selectedMaterials.clear();
+
+    // 初始化自动发布按钮UI
+    updateAutoPublishButtonUI();
+
+    // 若已开启自动发布，则建立SSE连接
+    setupAutoPublishEvents();
+    
+    // 监听跨页面的模板状态变化
+    window.addEventListener('storage', function(e) {
+        if (e.key === 'templateStatus') {
+            checkTemplateStatus();
+        }
+    });
+    
+    // 监听同页面的模板状态变化
+    window.addEventListener('templateStatusChanged', function() {
+        checkTemplateStatus();
+    });
+});
+
+// 获取地区映射关系
+async function loadRegionMapping() {
+    try {
+        const response = await fetch('/api/xiaohongshu-settings/config');
+        const data = await response.json();
+        
+        if (data.region_account_mapping) {
+            regionAccountMapping = data.region_account_mapping;
+            console.log('加载地区映射关系:', regionAccountMapping);
+        }
+    } catch (error) {
+        console.error('加载地区映射关系失败:', error);
+    }
+}
+
+// 根据素材标题匹配账号ID - 保留小红书特有功能
+function getAccountIdByTitle(title) {
+    for (const [regions, accountId] of Object.entries(regionAccountMapping)) {
+        const regionList = regions.split(',').map(r => r.trim());
+        for (const region of regionList) {
+            if (title.includes(region)) {
+                console.log(`素材"${title}"匹配到地区"${region}"，账号ID: ${accountId}`);
+                return accountId;
+            }
+        }
+    }
+    return null;
+}
+
+// 显示标签页 - 采用工作区架构
+function showTab(tabName) {
+    // 隐藏所有tab内容
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.add('hidden');
+    });
+    
+    // 显示选中的tab内容
+    document.getElementById(tabName + '-tab').classList.remove('hidden');
+    
+    // 更新tab按钮样式
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('border-indigo-500', 'text-indigo-600');
+        button.classList.add('border-transparent', 'text-gray-500');
+    });
+    
+    // 更新点击的tab按钮样式
+    document.getElementById(tabName + '-tab-button').classList.remove('border-transparent', 'text-gray-500');
+    document.getElementById(tabName + '-tab-button').classList.add('border-indigo-500', 'text-indigo-600');
+    
+    // 重置排序状态，默认按日期从最新到最早排序
+    currentSort = {
+        field: 'date',
+        order: 'desc'
+    };
+    updateSortIcons();
+    
+    // 重新加载数据
+    loadMaterials(tabName);
+}
+
+// 加载素材数据 - 客户端渲染架构
+async function loadMaterials(status = 'unpublished') {
+    try {
+        const response = await fetch(`/api/xiaohongshu-materials?status=${status}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        materials = data.materials;
+        accounts = data.accounts;
+        
+        // 应用默认排序（按日期从最新到最早）
+        if (currentSort.field) {
+            applyCurrentSort();
+        }
+        
+        const tbody = document.getElementById(status === 'unpublished' ? 'unpublished-list' : 
+                                           status === 'published' ? 'published-list' : 'scheduled-list');
+        if (!tbody) {
+            console.error(`Cannot find tbody element for ${status} materials`);
+            return;
+        }
+        
+        renderMaterialsTable(status);
+        
+        // 恢复选中状态
+        if (status === 'unpublished') {
+            selectedMaterials.forEach((order, id) => {
+                const row = document.querySelector(`tr[data-material-id="${id}"]`);
+                if (row) {
+                    const checkbox = row.querySelector('.material-checkbox');
+                    if (checkbox) {
+                        checkbox.checked = true;
+                        updateSelectionDisplay(checkbox);
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error loading materials:', error);
+        showToast('加载素材失败: ' + error.message, 'error');
+    }
+}
+
+// 渲染表格数据
+function renderMaterialsTable(status) {
+    const tbody = document.getElementById(status === 'unpublished' ? 'unpublished-list' : 
+                                       status === 'published' ? 'published-list' : 'scheduled-list');
+    if (!tbody) {
+        console.error(`Cannot find tbody element for ${status} materials`);
+        return;
+    }
+    
+    tbody.innerHTML = '';
+    materials.forEach(material => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50';
+        tr.setAttribute('data-material-id', material.id);
+        
+        if (status === 'unpublished') {
+            // 先尝试根据地区映射匹配账号，如果没有映射账号则使用原有的账号
+            let selectedAccountId = material.account_id;
+            if (!selectedAccountId) {
+                const mappedAccountId = getAccountIdByTitle(material.title);
+                if (mappedAccountId) {
+                    selectedAccountId = mappedAccountId;
+                    // 自动更新素材的账号（后台同步）
+                    updateAccount(material.id, mappedAccountId, false);
+                }
+            }
+            
+            // 提取地区和日期
+            const {region, date} = extractRegionAndDate(material.title);
+            
+            tr.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <input type="checkbox" class="material-checkbox form-checkbox h-4 w-4 text-indigo-600" onchange="updateSelection(this)">
+                        <span class="selection-order ml-2 hidden"></span>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <span class="title-text cursor-pointer" 
+                          onclick="editTitle(this, '${material.id}')"
+                          data-material-id="${material.id}">
+                        ${material.title}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${region}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${date}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.image_count || 0}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <select class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            onchange="updateAccount('${material.id}', this.value)">
+                        <option value="">选择账号</option>
+                        ${accounts.map(account => `
+                            <option value="${account.id}" ${account.id == selectedAccountId ? 'selected' : ''}>
+                                ${account.username}
+                            </option>
+                        `).join('')}
+                    </select>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 space-x-2">
+                    <button onclick="directPublish('${material.id}')"
+                            class="text-green-600 hover:text-green-900">直接发布</button>
+                    <button onclick="deleteMaterial(${material.id})"
+                            class="text-red-600 hover:text-red-900">删除</button>
+                </td>
+            `;
+    } else if (status === 'published') {
+        const accountName = accounts.find(a => a.id == material.account_id)?.username || '-';
+        tr.innerHTML = `
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.publish_time ? new Date(material.publish_time).toLocaleString() : '-'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.title}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.image_count || 0}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${accountName}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm ${material.publish_status === 'success' ? 'text-green-600' : 'text-red-600'} font-medium">
+                ${material.publish_status === 'success' ? '发布成功' : '发布失败'}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 space-x-2">
+                <button onclick="returnToUnpublished(${material.id})"
+                        class="text-green-600 hover:text-green-900">返回</button>
+                <button onclick="deleteMaterial(${material.id})"
+                        class="text-red-600 hover:text-red-900">删除</button>
+            </td>
+        `;
+    } else if (status === 'scheduled') {
+        const accountName = accounts.find(a => a.id == material.account_id)?.username || '-';
+        tr.innerHTML = `
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.schedule_time ? (() => {
+                const date = new Date(material.schedule_time);
+                return date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+            })() : ''}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.title}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.image_count || 0}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${accountName}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">预约中</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 space-x-2">
+                <button onclick="cancelSchedule(${material.id})"
+                        class="text-red-600 hover:text-red-900">取消预约</button>
+            </td>
+        `;
+    }
+    
+        
+        tbody.appendChild(tr);
+    });
+}
+
+// 批量选择功能 - 采用工作区的Map架构
+function toggleSelectAll(checkbox) {
+    const rows = document.querySelectorAll('tr[data-material-id]');
+    console.log('找到的行数:', rows.length);
+    
+    if (checkbox.checked) {
+        // 清空当前选择
+        selectedMaterials.clear();
+        // 按顺序添加所有复选框
+        let order = 1;
+        rows.forEach(row => {
+            const materialId = row.getAttribute('data-material-id');
+            const cb = row.querySelector('.material-checkbox');
+            if (cb && materialId) {
+                cb.checked = true;
+                selectedMaterials.set(materialId, order++);
+                const orderSpan = row.querySelector('.selection-order');
+                if (orderSpan) {
+                    orderSpan.textContent = selectedMaterials.get(materialId);
+                    orderSpan.classList.remove('hidden');
+                }
+            }
+        });
+    } else {
+        // 取消所有选择
+        rows.forEach(row => {
+            const cb = row.querySelector('.material-checkbox');
+            const orderSpan = row.querySelector('.selection-order');
+            if (cb) {
+                cb.checked = false;
+            }
+            if (orderSpan) {
+                orderSpan.classList.add('hidden');
+            }
+        });
+        selectedMaterials.clear();
+    }
+    
+    console.log('全选/取消全选后:', Array.from(selectedMaterials.entries()));
+}
+
+function updateSelection(checkbox) {
+    const tr = checkbox.closest('tr');
+    const materialId = parseInt(tr.getAttribute('data-material-id'));
+    const orderSpan = tr.querySelector('.selection-order');
+    
+    if (checkbox.checked) {
+        // 添加到选中列表
+        selectedMaterials.set(materialId, selectedMaterials.size + 1);
+        orderSpan.textContent = selectedMaterials.get(materialId);
+        orderSpan.classList.remove('hidden');
+    } else {
+        // 从选中列表移除
+        const removedOrder = selectedMaterials.get(materialId);
+        selectedMaterials.delete(materialId);
+        orderSpan.classList.add('hidden');
+        
+        // 更新其他选中项的顺序
+        selectedMaterials.forEach((order, id) => {
+            if (order > removedOrder) {
+                selectedMaterials.set(id, order - 1);
+                const otherTr = document.querySelector(`tr[data-material-id="${id}"]`);
+                if (otherTr) {
+                    const otherOrderSpan = otherTr.querySelector('.selection-order');
+                    otherOrderSpan.textContent = order - 1;
+                }
+            }
+        });
+    }
+    
+    console.log('选择更新后:', Array.from(selectedMaterials.entries()));
+}
+
+function updateSelectionDisplay(checkbox) {
+    const row = checkbox.closest('tr');
+    const materialId = row.getAttribute('data-material-id');
+    const orderSpan = checkbox.nextElementSibling;
+    
+    if (checkbox.checked && selectedMaterials.has(materialId)) {
+        orderSpan.textContent = selectedMaterials.get(materialId);
+        orderSpan.classList.remove('hidden');
+    } else {
+        orderSpan.classList.add('hidden');
+    }
+}
+
+// 批量发布功能
+async function publishSelected() {
+    // 检查是否有选中的文章
+    if (selectedMaterials.size === 0) {
+        alert('请先选择要发布的素材');
+        return;
+    }
+    
+    if (!confirm('确定要一键发布选中的素材吗？')) {
+        return;
+    }
+    
+    try {
+        // 按选择顺序排序材料ID
+        const sortedMaterials = Array.from(selectedMaterials.entries())
+            .sort((a, b) => a[1] - b[1])
+            .map(entry => parseInt(entry[0]))
+            .filter(id => !isNaN(id));
+            
+        // 检查每个选中的素材是否都已选择发布账号
+        const accountErrors = [];
+        let allHaveAccounts = true;
+        
+        for (const materialId of sortedMaterials) {
+            const row = document.querySelector(`tr[data-material-id="${materialId}"]`);
+            if (!row) continue;
+            
+            const accountSelect = row.querySelector('select');
+            if (!accountSelect || !accountSelect.value) {
+                const titleCell = row.querySelector('td:nth-child(2)');
+                const title = titleCell ? titleCell.textContent.trim() : `ID: ${materialId}`;
+                accountErrors.push(title);
+                allHaveAccounts = false;
+            }
+        }
+        
+        if (!allHaveAccounts) {
+            alert('请为以下素材选择发布账号：\n' + accountErrors.join('\n'));
+            return;
+        }
+        
+        // 获取预约发布状态和时间
+        const schedulePublish = document.getElementById('schedule_publish').checked;
+        let scheduleTime = null;
+        if (schedulePublish) {
+            const scheduleTimeInput = document.getElementById('schedule_time').value;
+            if (!scheduleTimeInput) {
+                alert('请选择预约发布时间');
+                return;
+            }
+            // 将本地时间转换为 ISO 格式
+            scheduleTime = new Date(scheduleTimeInput).toISOString();
+        }
+        
+        const addProduct = document.getElementById('add_product_toggle').checked;
+        
+        console.log('发布参数:', {
+            schedulePublish,
+            scheduleTime,
+            addProduct
+        });
+        
+        // 应用前端图片模版生成
+        await processImageTemplatesForMaterials(sortedMaterials);
+        
+        const response = await fetch('/api/xiaohongshu-materials/publish-batch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                material_ids: sortedMaterials,
+                schedule_publish: schedulePublish,
+                schedule_time: scheduleTime,
+                add_product: addProduct,
+                default_mode: globalDefaultMode
+            })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            // 提交成功，不再弹窗或强制刷新；等待 SSE 逐条刷新
+        } else {
+            throw new Error(data.detail || '发布失败');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showToast('发布过程出错：' + error.message, 'error');
+    }
+}
+
+/**
+ * 为素材批量处理图片模版生成
+ * @param {Array} materialIds - 素材ID数组
+ */
+async function processImageTemplatesForMaterials(materialIds) {
+    console.log('🎯 开始为素材生成图片模版:', materialIds);
+    console.log('📋 处理素材数量:', materialIds.length);
+    
+    for (const materialId of materialIds) {
+        try {
+            console.log(`🔧 处理素材 ${materialId} 的图片模版...`);
+            
+            // 1. 获取素材的图片模版配置
+            console.log(`📡 发送请求获取素材 ${materialId} 的模版配置...`);
+            const configResponse = await fetch(`/api/template-materials/generate-template-image-for-material?material_id=${materialId}&default_mode=${encodeURIComponent(globalDefaultMode)}`, {
+                method: 'POST'
+            });
+            
+            console.log(`📄 素材 ${materialId} 配置请求响应状态:`, configResponse.status, configResponse.statusText);
+            
+            if (!configResponse.ok) {
+                console.error(`❌ 素材 ${materialId} 获取模版配置失败:`, configResponse.status);
+                const errorText = await configResponse.text();
+                console.error(`错误响应内容:`, errorText);
+                throw new Error(`素材 ${materialId} 获取模版配置失败: HTTP ${configResponse.status}`);
+            }
+            
+            const configData = await configResponse.json();
+            console.log(`📝 素材 ${materialId} 配置响应数据:`, configData);
+            
+            if (!configData.success) {
+                console.error(`❌ 素材 ${materialId} 模版配置获取失败:`, configData.message);
+                throw new Error(`素材 ${materialId} 模版配置获取失败: ${configData.message}`);
+            }
+            
+            console.log(`✅ 素材 ${materialId} 的模版配置获取成功:`, configData);
+            
+            // 2. 确保Canvas生成器可用并生成图片
+            try {
+                console.log(`🔧 确保Canvas生成器就绪...`);
+                const generator = await ensureCanvasGeneratorReady();
+                
+                // 初始化Canvas (使用生成用的尺寸)
+                const canvas = generator.initialize('temp-canvas-for-generation', 750, 1000);
+                
+                // 生成图片
+                const imageData = await generator.generateImage(
+                    configData.template_config,
+                    configData.text_lines,
+                    configData.mode
+                );
+                
+                console.log(`✅ 素材 ${materialId} 图片生成成功`);
+                
+                // 3. 保存生成的图片
+                let filename;
+                let outputPath;
+                
+                if (configData.mode === 'overlay') {
+                    // 覆盖模式（改为非破坏式）：生成新首图
+                    filename = '00_template_generated.png';
+                    outputPath = configData.output_path;
+                    console.log(`🎯 覆盖模式: 新首图 ${filename}, 保存路径 ${outputPath}`);
+                } else {
+                    // 插入模式：生成新的第一张图片
+                    filename = '00_template_generated.png';
+                    outputPath = configData.output_path;
+                }
+                
+                const saveResponse = await fetch('/api/template-materials/save-generated-image', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        image_data: imageData,
+                        output_path: outputPath,
+                        filename: filename
+                    })
+                });
+                
+                if (saveResponse.ok) {
+                    const saveData = await saveResponse.json();
+                    console.log(`✅ 素材 ${materialId} 图片保存成功:`, saveData.filename);
+                } else {
+                    console.error(`❌ 素材 ${materialId} 图片保存失败:`, saveResponse.status);
+                    const errorText = await saveResponse.text();
+                    console.error(`保存错误详情:`, errorText);
+                    throw new Error(`素材 ${materialId} 图片保存失败: HTTP ${saveResponse.status}`);
+                }
+                
+            } catch (generateError) {
+                console.error(`❌ 素材 ${materialId} Canvas处理失败:`, generateError);
+                throw new Error(`素材 ${materialId} 模板处理失败: ${generateError.message}`);
+            }
+            
+        } catch (error) {
+            console.error(`❌ 处理素材 ${materialId} 时出错:`, error);
+            throw error; // 严格抛出错误，不允许继续
+        }
+    }
+    
+    console.log('图片模版生成处理完成');
+}
+
+// 工具函数
+function toggleScheduleTime(checkbox) {
+    const container = document.getElementById('schedule_time_container');
+    if (checkbox.checked) {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+}
+
+function sortMaterials(field) {
+    // 切换排序方向
+    if (currentSort.field === field) {
+        currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.field = field;
+        currentSort.order = 'asc';
+    }
+    
+    // 对materials数组进行排序
+    materials.sort((a, b) => {
+        let valueA, valueB;
+        
+        switch (field) {
+            case 'title':
+                valueA = a.title.toLowerCase();
+                valueB = b.title.toLowerCase();
+                break;
+            case 'region':
+                valueA = extractRegionAndDate(a.title).region;
+                valueB = extractRegionAndDate(b.title).region;
+                break;
+            case 'date':
+                // 日期按从最新到最早排序，所以默认降序
+                const dateA = parseDate(extractRegionAndDate(a.title).date);
+                const dateB = parseDate(extractRegionAndDate(b.title).date);
+                if (currentSort.order === 'asc') {
+                    return dateA - dateB;
+                } else {
+                    return dateB - dateA;
+                }
+            case 'accountType':
+                const accountA = accounts.find(acc => acc.id == a.account_id);
+                const accountB = accounts.find(acc => acc.id == b.account_id);
+                valueA = accountA ? accountA.username.toLowerCase() : '';
+                valueB = accountB ? accountB.username.toLowerCase() : '';
+                break;
+            default:
+                return 0;
+        }
+        
+        // 对于非日期字段的排序
+        if (field !== 'date') {
+            if (valueA < valueB) {
+                return currentSort.order === 'asc' ? -1 : 1;
+            }
+            if (valueA > valueB) {
+                return currentSort.order === 'asc' ? 1 : -1;
+            }
+            return 0;
+        }
+        
+        return 0;
+    });
+    
+    // 更新排序图标
+    updateSortIcons();
+    
+    // 重新渲染表格
+    const currentTab = document.querySelector('.tab-button.border-indigo-500').id.replace('-tab-button', '');
+    renderMaterialsTable(currentTab);
+}
+
+// 应用当前排序
+function applyCurrentSort() {
+    if (!currentSort.field || !materials.length) return;
+    
+    materials.sort((a, b) => {
+        let valueA, valueB;
+        
+        switch (currentSort.field) {
+            case 'title':
+                valueA = a.title.toLowerCase();
+                valueB = b.title.toLowerCase();
+                break;
+            case 'region':
+                valueA = extractRegionAndDate(a.title).region;
+                valueB = extractRegionAndDate(b.title).region;
+                break;
+            case 'date':
+                const dateA = parseDate(extractRegionAndDate(a.title).date);
+                const dateB = parseDate(extractRegionAndDate(b.title).date);
+                if (currentSort.order === 'asc') {
+                    return dateA - dateB;
+                } else {
+                    return dateB - dateA;
+                }
+            case 'accountType':
+                const accountA = accounts.find(acc => acc.id == a.account_id);
+                const accountB = accounts.find(acc => acc.id == b.account_id);
+                valueA = accountA ? accountA.username.toLowerCase() : '';
+                valueB = accountB ? accountB.username.toLowerCase() : '';
+                break;
+            default:
+                return 0;
+        }
+        
+        // 对于非日期字段的排序
+        if (currentSort.field !== 'date') {
+            if (valueA < valueB) {
+                return currentSort.order === 'asc' ? -1 : 1;
+            }
+            if (valueA > valueB) {
+                return currentSort.order === 'asc' ? 1 : -1;
+            }
+            return 0;
+        }
+        
+        return 0;
+    });
+}
+
+function updateSortIcons() {
+    // 清除所有排序图标
+    document.querySelectorAll('[id^=sort-]').forEach(span => {
+        span.textContent = '';
+    });
+    
+    // 更新当前排序图标
+    if (currentSort.field) {
+        const iconSpan = document.getElementById(`sort-${currentSort.field}`);
+        if (iconSpan) {
+            iconSpan.textContent = currentSort.order === 'asc' ? '↑' : '↓';
+        }
+    }
+}
+
+// API调用函数
+async function updateAccount(materialId, accountId, showAlert = true) {
+    try {
+        const response = await fetch(`/api/xiaohongshu-materials/${materialId}/account`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ account_id: parseInt(accountId) })
+        });
+        
+        const data = await response.json();
+        if (!data.success && showAlert) {
+            alert('更新账号失败: ' + data.message);
+        } else if (data.success && !showAlert) {
+            console.log(`素材 ${materialId} 自动匹配账号 ${accountId} 成功`);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        if (showAlert) {
+            alert('更新账号失败: ' + error.message);
+        }
+    }
+}
+
+async function editTitle(element, materialId) {
+    const titleText = element.textContent.trim();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = titleText;
+    input.className = 'w-full px-2 py-1 border rounded';
+    
+    input.onblur = async () => {
+        const newTitle = input.value.trim();
+        if (newTitle !== titleText) {
+            try {
+                const response = await fetch(`/api/xiaohongshu-materials/${materialId}/title`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ title: newTitle })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                showToast('标题更新成功', 'success');
+                await loadMaterials(); // 刷新列表
+            } catch (error) {
+                console.error('更新标题失败:', error);
+                showToast('更新标题失败，请重试', 'error');
+                element.textContent = titleText; // 恢复原标题
+            }
+        } else {
+            element.textContent = titleText;
+        }
+    };
+    
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+            input.blur();
+        } else if (e.key === 'Escape') {
+            element.textContent = titleText;
+        }
+    };
+    
+    element.textContent = '';
+    element.appendChild(input);
+    input.focus();
+    input.select();
+}
+
+async function directPublish(materialId) {
+    try {
+        const addProduct = document.getElementById('add_product_toggle').checked;
+        
+        // 显示发布进度
+        showToast('正在应用模板并发布...', 'info');
+        
+        // 应用前端图片模版生成
+        await processImageTemplatesForMaterials([materialId]);
+        
+        const response = await fetch(`/api/xiaohongshu-materials/${materialId}/direct-publish`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                add_product: addProduct,
+                default_mode: globalDefaultMode
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            showToast('发布失败: ' + (result.message || '未知错误'), 'error');
+        }
+        // 成功时不再弹窗，不再立即刷新；SSE 会推动刷新
+    } catch (error) {
+        console.error('发布失败:', error);
+        showToast('发布失败，请重试: ' + error.message, 'error');
+    }
+}
+
+async function deleteMaterial(materialId) {
+    if (!confirm('确定要删除这个素材吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/xiaohongshu-materials/${materialId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('删除失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function returnToUnpublished(materialId) {
+    if (!confirm('确定要将此素材返回到未发布状态吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/xiaohongshu-materials/${materialId}/status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: 'unpublished' })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || '返回失败');
+        }
+        
+        const data = await response.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('返回失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function cancelSchedule(materialId) {
+    if (!confirm('确定要取消这个预约发布任务吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/xiaohongshu-materials/${materialId}/status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: 'unpublished' })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('取消失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function batchReturnToUnpublished() {
+    if (!confirm('确定要将所有已发布的素材返回到未发布状态吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/xiaohongshu-materials/batch-return', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('批量返回失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function batchClearPublished() {
+    if (!confirm('确定要清空已发布页面的所有显示内容吗？\n\n注意：这不会真正删除数据，重新扫描素材库时可以恢复这些记录。')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/xiaohongshu-materials/batch-clear', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert(`成功清空了 ${data.cleared_count} 条记录`);
+            window.location.reload();
+        } else {
+            alert('清空失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function batchCancelSchedule() {
+    if (!confirm('确定要取消所有预约发布任务吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/xiaohongshu-materials/batch-cancel-scheduled', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('取消失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function fetchEmailMaterials() {
+    const button = event.target;
+    const originalText = button.textContent;
+    button.textContent = '正在获取...';
+    button.disabled = true;
+    
+    try {
+        const response = await fetch('/api/xiaohongshu-materials/fetch-email-materials', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            location.reload(); // 重新加载页面显示新素材
+        } else {
+            alert('获取邮箱素材失败: ' + (result.message || '未知错误'));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('获取邮箱素材失败: ' + error.message);
+    } finally {
+        button.textContent = originalText;
+        button.disabled = false;
+    }
+}
+
+// 设置全局模式
+async function setGlobalMode(mode) {
+    globalDefaultMode = mode;
+    
+    // 更新按钮状态
+    document.querySelectorAll('.global-mode-btn').forEach(btn => {
+        btn.className = 'global-mode-btn px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300';
+    });
+    
+    const activeBtn = document.getElementById(`global-${mode}-btn`);
+    if (activeBtn) {
+        if (mode === 'insert') {
+            activeBtn.className = 'global-mode-btn px-2 py-1 text-xs rounded bg-blue-500 text-white';
+        } else if (mode === 'random') {
+            activeBtn.className = 'global-mode-btn px-2 py-1 text-xs rounded bg-green-500 text-white';
+        } else if (mode === 'overlay') {
+            activeBtn.className = 'global-mode-btn px-2 py-1 text-xs rounded bg-orange-500 text-white';
+        }
+    }
+    
+    console.log(`全局默认模式设置为: ${mode}`);
+    // 持久化到后端，供自动发布读取
+    try {
+        await fetch('/api/xiaohongshu-settings/default-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+        });
+    } catch (e) {}
+}
+
+// 检查模板指定状态
+async function checkTemplateStatus() {
+    try {
+        const response = await fetch('/api/template-materials/get-template-status');
+        const result = await response.json();
+        
+        const statusElement = document.getElementById('template-status');
+        if (statusElement) {
+            if (result.success && result.has_template) {
+                statusElement.textContent = '已指定模板';
+                statusElement.className = 'text-xs px-2 py-1 rounded bg-red-100 text-red-800';
+            } else {
+                statusElement.textContent = '未指定模板';
+                statusElement.className = 'text-xs px-2 py-1 rounded bg-blue-100 text-blue-800';
+            }
+        }
+    } catch (error) {
+        console.error('检查模板状态失败:', error);
+        const statusElement = document.getElementById('template-status');
+        if (statusElement) {
+            statusElement.textContent = '未指定模板';
+            statusElement.className = 'text-xs px-2 py-1 rounded bg-blue-100 text-blue-800';
+        }
+    }
+}
+
+// 自动发布开关（仅前端样式 + 本地持久化）
+function isAutoPublishEnabled() {
+    try {
+        return localStorage.getItem('xhs_auto_publish_enabled') === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+function setAutoPublishEnabled(enabled) {
+    try {
+        localStorage.setItem('xhs_auto_publish_enabled', enabled ? '1' : '0');
+    } catch (_) {}
+}
+
+function updateAutoPublishButtonUI() {
+    const btn = document.getElementById('auto-publish-btn');
+    if (!btn) return;
+    const enabled = isAutoPublishEnabled();
+    if (enabled) {
+        btn.textContent = '自动发布中';
+        btn.className = 'bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700';
+    } else {
+        btn.textContent = '自动发布';
+        btn.className = 'bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700';
+    }
+}
+
+function toggleAutoPublish() {
+    const enabled = isAutoPublishEnabled();
+    const newState = !enabled;
+    // 后端切换
+    fetch('/api/xiaohongshu-settings/auto-publish/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: newState })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data && data.success) {
+            setAutoPublishEnabled(newState);
+            updateAutoPublishButtonUI();
+            showToast(newState ? '自动发布已开启' : '自动发布已关闭', newState ? 'success' : 'info');
+            setupAutoPublishEvents();
+        } else {
+            showToast('自动发布切换失败: ' + (data.message || '未知错误'), 'error');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        showToast('自动发布切换失败: ' + err.message, 'error');
+    });
+}
+
+function setupAutoPublishEvents() {
+    const enabled = isAutoPublishEnabled();
+    if (enabled) {
+        try {
+            if (xhsEventSource) {
+                xhsEventSource.close();
+                xhsEventSource = null;
+            }
+            if (!!window.EventSource) {
+                xhsEventSource = new EventSource('/api/xiaohongshu-settings/auto-events');
+                xhsEventSource.onmessage = function (e) {
+                    try {
+                        const msg = JSON.parse(e.data);
+                        if (msg && msg.type === 'xhs_auto_fetch') {
+                            showToast(`收到自动素材更新：新增 ${msg.added || 0}，更新 ${msg.updated || 0}`, 'success');
+                            // 根据当前tab刷新列表
+                            let status = 'unpublished';
+                            const activeBtn = document.querySelector('.tab-button.border-indigo-500');
+                            if (activeBtn) {
+                                if (activeBtn.id === 'published-tab-button') status = 'published';
+                                if (activeBtn.id === 'scheduled-tab-button') status = 'scheduled';
+                            }
+                            loadMaterials(status);
+                        }
+                    } catch (err) {
+                        console.error('SSE parse error:', err);
+                    }
+                };
+                xhsEventSource.onerror = function () {
+                    // 网络断开时稍后重连
+                    setTimeout(() => setupAutoPublishEvents(), 5000);
+                };
+            }
+        } catch (err) {
+            console.error('SSE setup error:', err);
+        }
+    } else {
+        if (xhsEventSource) {
+            xhsEventSource.close();
+            xhsEventSource = null;
+        }
+    }
+}
+
+// 显示提示信息
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded shadow-lg ${
+        type === 'error' ? 'bg-red-500' :
+        type === 'success' ? 'bg-green-500' :
+        type === 'warning' ? 'bg-yellow-500' :
+        'bg-blue-500'
+    } text-white`;
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+// 将页面上的“添加商品”开关与后端全局状态保持一致
+function syncAddProductToggleFromServer() {
+    fetch('/api/xiaohongshu-settings/config')
+        .then(res => res.json())
+        .then(data => {
+            if (data && typeof data.add_product_enabled !== 'undefined') {
+                const toggle = document.getElementById('add_product_toggle');
+                if (toggle) toggle.checked = !!data.add_product_enabled;
+            }
+        })
+        .catch(() => {});
+}
+
+// 监听“添加商品”开关变化并持久化到后端
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'add_product_toggle') {
+        const enabled = e.target.checked;
+        fetch('/api/xiaohongshu-settings/add-product/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        }).then(res => res.json()).then(data => {
+            if (!(data && data.success)) {
+                showToast('保存添加商品状态失败', 'error');
+            }
+        }).catch(() => showToast('保存添加商品状态失败', 'error'));
+    }
+});
+
+// 页面加载时同步状态
+document.addEventListener('DOMContentLoaded', syncAddProductToggleFromServer);
+
+</script>
+
+<!-- 引入Canvas图片生成器 -->
+<script src="{{ url_for('static', path='js/canvas-image-generator.js') }}"></script>
+<script>
+// 确保Canvas图片生成器可用的函数
+function ensureCanvasGeneratorReady() {
+    return new Promise((resolve, reject) => {
+        if (window.canvasImageGenerator) {
+            console.log('✅ Canvas图片生成器已就绪');
+            resolve(window.canvasImageGenerator);
+            return;
+        }
+        
+        // 如果还没初始化，尝试初始化
+        if (typeof CanvasImageGenerator !== 'undefined') {
+            console.log('🎯 初始化Canvas图片生成器...');
+            window.canvasImageGenerator = new CanvasImageGenerator();
+            console.log('✅ Canvas图片生成器初始化完成');
+            resolve(window.canvasImageGenerator);
+        } else {
+            console.error('❌ CanvasImageGenerator 类未加载');
+            reject(new Error('CanvasImageGenerator 类未加载'));
+        }
+    });
+}
+
+// DOM加载完成时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🎯 页面加载完成，初始化Canvas图片生成器...');
+    ensureCanvasGeneratorReady().catch(error => {
+        console.error('Canvas图片生成器初始化失败:', error);
+    });
+});
+</script>
+{% endblock %}

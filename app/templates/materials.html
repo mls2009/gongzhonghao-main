@@ -1,0 +1,1195 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow-sm p-6">
+    {% if error %}
+    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+        <strong class="font-bold">错误！</strong>
+        <span class="block sm:inline">{{ error }}</span>
+    </div>
+    {% endif %}
+
+    <!-- Tabs -->
+    <div class="border-b border-gray-200 mb-6">
+        <div class="flex -mb-px">
+            <button onclick="showTab('unpublished')" id="unpublished-tab-button" class="tab-button mr-4 py-2 px-4 border-b-2 border-indigo-500 text-indigo-600 font-medium">
+                未发布
+            </button>
+            <button onclick="showTab('published')" id="published-tab-button" class="tab-button py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium">
+                已发布
+            </button>
+            <button onclick="showTab('scheduled')" id="scheduled-tab-button" class="tab-button py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium">
+                预约发布
+            </button>
+        </div>
+    </div>
+
+    <!-- 未发布 Tab -->
+    <div id="unpublished-tab" class="tab-content">
+        <div class="mb-4 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="toutiao_first" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    <span class="ml-3 text-sm font-medium text-gray-900">头条号首发</span>
+                </label>
+                
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="schedule_publish" class="sr-only peer" onchange="toggleScheduleTime(this)">
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    <span class="ml-3 text-sm font-medium text-gray-900">预约发布</span>
+                </label>
+                
+                <div id="schedule_time_container" class="hidden">
+                    <input type="datetime-local" 
+                           id="schedule_time" 
+                           class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                           ondblclick="this.readOnly=false"
+                           onblur="this.readOnly=true">
+                </div>
+            </div>
+            <button onclick="publishSelected()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                一键发布
+            </button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                            <div class="flex items-center">
+                                <input type="checkbox" id="select-all" onchange="toggleSelectAll(this)">
+                                <span class="selection-order ml-2 hidden"></span>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onclick="sortMaterials('title')">
+                            文章标题
+                            <span id="sort-title" class="ml-1"></span>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onclick="sortMaterials('titleLength')">
+                            标题字数
+                            <span id="sort-titleLength" class="ml-1"></span>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章字数</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章内图片</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onclick="sortMaterials('accountType')">
+                            账号名称
+                            <span id="sort-accountType" class="ml-1"></span>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="unpublished-list" class="bg-white divide-y divide-gray-200">
+                    <!-- 动态内容将由 JavaScript 填充 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 已发布 Tab -->
+    <div id="published-tab" class="tab-content hidden">
+        <div class="mb-4 flex justify-between items-center">
+            <div class="flex space-x-2">
+                <button onclick="batchReturnToUnpublished()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                    一键返回
+                </button>
+                <button onclick="batchClearPublished()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                    一键清空
+                </button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">发布时间</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章标题</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章字数</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章内图片</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">发布账号</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">发布状态</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="published-list" class="bg-white divide-y divide-gray-200">
+                    <!-- 动态内容将由 JavaScript 填充 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 预约发布 Tab -->
+    <div id="scheduled-tab" class="tab-content hidden">
+        <div class="mb-4 flex justify-between items-center">
+            <button onclick="batchCancelSchedule()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                取消预约
+            </button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">预约时间</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章标题</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章字数</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章内图片</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">发布账号</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">预约状态</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduled-list" class="bg-white divide-y divide-gray-200">
+                    <!-- 动态内容将由 JavaScript 填充 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 账号选择弹窗 -->
+<div id="republish-modal" class="fixed inset-0 bg-gray-500 bg-opacity-75 hidden">
+    <div class="flex items-center justify-center min-h-screen">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">选择发布账号</h3>
+            <select id="republish-account" class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 mb-4">
+                <option value="">选择账号</option>
+                {% for account in accounts %}
+                <option value="{{ account.id }}">{{ account.author_name }} ({{ account.account_type }})</option>
+                {% endfor %}
+            </select>
+            <div class="flex justify-end space-x-4">
+                <button onclick="closeRepublishModal()" 
+                        class="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300">
+                    取消
+                </button>
+                <button onclick="confirmRepublish()" 
+                        class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                    确定
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let selectedMaterials = new Map();  // 使用Map存储选中的素材ID和顺序
+let currentSort = {
+    field: null,
+    order: 'asc'
+};
+let accounts = JSON.parse('{{ accounts|tojson|safe }}');  // 修改账号数据的解析方式
+let currentMaterialId = null;
+let toutiaoFirst = false;  // 头条号首发状态变量
+let materials = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('页面加载完成，开始加载素材...');
+    showTab('unpublished');
+    
+    // 初始化头条号首发开关状态
+    const toutiaoFirstToggle = document.getElementById('toutiao_first');
+    if (toutiaoFirstToggle) {
+        toutiaoFirstToggle.addEventListener('change', function() {
+            toutiaoFirst = this.checked;
+            console.log('头条号首发状态:', toutiaoFirst);
+        });
+    }
+    
+    // 初始化预约发布时间
+    const scheduleTimeInput = document.getElementById('schedule_time');
+    if (scheduleTimeInput) {
+        const now = new Date();
+        // 格式化日期时间为 yyyy-MM-ddThh:mm 格式
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        scheduleTimeInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+        scheduleTimeInput.readOnly = true;  // 默认只读，双击才能编辑
+    }
+    
+    // 清空选择
+    selectedMaterials.clear();
+    
+    // 确保所有复选框都是未选中状态
+    document.querySelectorAll('.material-checkbox').forEach(checkbox => {
+        checkbox.checked = false;
+        const orderSpan = checkbox.closest('tr').querySelector('.selection-order');
+        if (orderSpan) {
+            orderSpan.classList.add('hidden');
+            orderSpan.textContent = '';
+        }
+    });
+});
+
+function showTab(tabName) {
+    // 隐藏所有tab内容
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.add('hidden');
+    });
+    
+    // 显示选中的tab内容
+    document.getElementById(tabName + '-tab').classList.remove('hidden');
+    
+    // 更新tab按钮样式
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('border-indigo-500', 'text-indigo-600');
+        button.classList.add('border-transparent', 'text-gray-500');
+    });
+    
+    // 更新点击的tab按钮样式
+    document.getElementById(tabName + '-tab-button').classList.remove('border-transparent', 'text-gray-500');
+    document.getElementById(tabName + '-tab-button').classList.add('border-indigo-500', 'text-indigo-600');
+    
+    // 重置排序状态
+    currentSort = {
+        field: null,
+        order: 'asc'
+    };
+    updateSortIcons();
+    
+    // 重新加载数据
+    loadMaterials(tabName);
+}
+
+function extractChineseNumber(title) {
+    const chineseNumbers = {
+        '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+        '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+        '十一': 11, '十二': 12, '十三': 13, '十四': 14, '十五': 15,
+        '十六': 16, '十七': 17, '十八': 18, '十九': 19, '二十': 20
+    };
+
+    const sequenceOrder = {
+        '上': 1,
+        '中': 2,
+        '下': 3,
+        '终': 4
+    };
+    
+    if (title && title.endsWith('）')) {
+        const start_pos = title.lastIndexOf('（');
+        if (start_pos !== -1) {
+            const number_part = title.substring(start_pos + 1, title.length - 1);
+            // 先检查是否是上中下终序号
+            if (sequenceOrder[number_part] !== undefined) {
+                return sequenceOrder[number_part];
+            }
+            // 如果不是，则检查是否是中文数字序号
+            return chineseNumbers[number_part] || 999;
+        }
+    }
+    return 999;
+}
+
+function sortMaterials(field) {
+    const tbody = document.getElementById('unpublished-list');
+    const rows = Array.from(tbody.getElementsByTagName('tr'));
+    
+    if (currentSort.field === field) {
+        currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.field = field;
+        currentSort.order = 'asc';
+    }
+    
+    updateSortIcons();
+    
+    rows.sort((a, b) => {
+        if (field === 'title') {
+            const titleA = a.querySelector('.title-text').textContent.trim();
+            const titleB = b.querySelector('.title-text').textContent.trim();
+            
+            // 提取基本标题（不包含序号部分）
+            const baseA = titleA.replace(/（[上中下终一二三四五六七八九十]+）$/, '');
+            const baseB = titleB.replace(/（[上中下终一二三四五六七八九十]+）$/, '');
+            
+            // 如果基本标题相同，按序号排序
+            if (baseA === baseB) {
+                const getOrder = (title) => {
+                    const match = title.match(/（([上中下终一二三四五六七八九十]+)）$/);
+                    if (match) {
+                        const seq = match[1];
+                        // 先检查是否是上中下终
+                        const sequenceOrder = {'上': 1, '中': 2, '下': 3, '终': 4};
+                        if (sequenceOrder[seq] !== undefined) {
+                            return sequenceOrder[seq];
+                        }
+                        // 如果不是，则检查是否是中文数字
+                        const chineseNumbers = {
+                            '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+                            '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+                            '十一': 11, '十二': 12, '十三': 13, '十四': 14, '十五': 15,
+                            '十六': 16, '十七': 17, '十八': 18, '十九': 19, '二十': 20
+                        };
+                        return chineseNumbers[seq] || 999;
+                    }
+                    return 999;
+                };
+                
+                const orderA = getOrder(titleA);
+                const orderB = getOrder(titleB);
+                return currentSort.order === 'asc' ? orderA - orderB : orderB - orderA;
+            }
+            
+            // 如果基本标题不同，按标题排序
+            return currentSort.order === 'asc' ? baseA.localeCompare(baseB) : baseB.localeCompare(baseA);
+        }
+        
+        if (field === 'titleLength') {
+            const valueA = parseInt(a.querySelector('.title-length').textContent);
+            const valueB = parseInt(b.querySelector('.title-length').textContent);
+            return currentSort.order === 'asc' ? valueA - valueB : valueB - valueA;
+        }
+        
+        if (field === 'accountType') {
+            const selectA = a.querySelector('select');
+            const selectB = b.querySelector('select');
+            const valueA = selectA.options[selectA.selectedIndex]?.text || '';
+            const valueB = selectB.options[selectB.selectedIndex]?.text || '';
+            return currentSort.order === 'asc' ? valueA.localeCompare(valueB) : valueB.localeCompare(valueA);
+        }
+    });
+    
+    rows.forEach(row => tbody.appendChild(row));
+}
+
+function updateSortIcons() {
+    // 清除所有排序图标
+    document.querySelectorAll('[id^=sort-]').forEach(span => {
+        span.textContent = '';
+    });
+    
+    // 更新当前排序图标
+    if (currentSort.field) {
+        const iconSpan = document.getElementById(`sort-${currentSort.field}`);
+        if (iconSpan) {
+            iconSpan.textContent = currentSort.order === 'asc' ? '↑' : '↓';
+        }
+    }
+}
+
+async function loadMaterials(status = 'unpublished') {
+    try {
+        const response = await fetch(`/api/materials?status=${status}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        materials = data.materials;
+        accounts = data.accounts;
+        
+        const tbody = document.getElementById(status === 'unpublished' ? 'unpublished-list' : 
+                                           status === 'published' ? 'published-list' : 'scheduled-list');
+        if (!tbody) {
+            console.error(`Cannot find tbody element for ${status} materials`);
+            return;
+        }
+        
+        tbody.innerHTML = '';
+        materials.forEach(material => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50';
+            tr.setAttribute('data-material-id', material.id);
+            
+            if (status === 'unpublished') {
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <input type="checkbox" class="material-checkbox form-checkbox h-4 w-4 text-indigo-600" onchange="updateSelection(this)">
+                            <span class="selection-order ml-2 hidden"></span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span class="title-text cursor-pointer" 
+                              onclick="editTitle(this, '${material.id}')"
+                              data-material-id="${material.id}">
+                            ${material.title}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 title-length ${material.title.length <= 31 ? 'text-red-500 font-bold' : ''}">
+                        ${material.title.length}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.word_count}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.image_count}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <select class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                onchange="updateAccount('${material.id}', this.value)">
+                            <option value="">选择账号</option>
+                            ${accounts.map(account => `
+                                <option value="${account.id}" ${material.account_id === account.id ? 'selected' : ''}>
+                                    ${account.author_name} (${account.account_type})
+                                </option>
+                            `).join('')}
+                        </select>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 space-x-2">
+                        <button onclick="directPublish('${material.id}')"
+                                class="text-green-600 hover:text-green-900">直接发布</button>
+                        <button onclick="publishToDraft('${material.id}')" 
+                                class="text-indigo-600 hover:text-indigo-900">发布到草稿箱</button>
+                        <button onclick="deleteMaterial(${material.id})"
+                                class="text-red-600 hover:text-red-900">删除</button>
+                    </td>
+                `;
+            } else if (status === 'published') {
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(material.publish_time).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.title}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.word_count}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.image_count}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.author_name || ''} ${material.account_type ? `(${material.account_type})` : ''}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm ${material.publish_status === 'success' ? 'text-green-600' : 'text-red-600'} font-medium">
+                        ${material.publish_status === 'success' ? '发布成功' : '发布失败'}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 space-x-2">
+                        <button onclick="showRepublishModal(${material.id})"
+                                class="text-indigo-600 hover:text-indigo-900">重新发布到草稿箱</button>
+                        <button onclick="deleteMaterial(${material.id})"
+                                class="text-red-600 hover:text-red-900">删除</button>
+                        <button onclick="returnToUnpublished(${material.id})"
+                                class="text-green-600 hover:text-green-900">返回</button>
+                    </td>
+                `;
+            } else if (status === 'scheduled') {
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.schedule_time ? (() => {
+                        const date = new Date(material.schedule_time);
+                        return date.toLocaleString('zh-CN', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false
+                        });
+                    })() : ''}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.title}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.word_count}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.image_count}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${material.author_name || ''} ${material.account_type ? `(${material.account_type})` : ''}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">预约中</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 space-x-2">
+                        <button onclick="editSchedule(${material.id})"
+                                class="text-indigo-600 hover:text-indigo-900">修改时间</button>
+                        <button onclick="cancelSchedule(${material.id})"
+                                class="text-red-600 hover:text-red-900">取消预约</button>
+                    </td>
+                `;
+            }
+            
+            tbody.appendChild(tr);
+        });
+        
+        // 恢复选中状态
+        if (status === 'unpublished') {
+            selectedMaterials.forEach((order, id) => {
+                const row = document.querySelector(`tr[data-material-id="${id}"]`);
+                if (row) {
+                    const checkbox = row.querySelector('.material-checkbox');
+                    if (checkbox) {
+                        checkbox.checked = true;
+                        updateSelectionDisplay(checkbox);
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error loading materials:', error);
+    }
+}
+
+function toggleSelectAll(checkbox) {
+    const rows = document.querySelectorAll('tr[data-material-id]');
+    console.log('找到的行数:', rows.length);
+    
+    if (checkbox.checked) {
+        // 清空当前选择
+        selectedMaterials.clear();
+        // 按顺序添加所有复选框
+        let order = 1;
+        rows.forEach(row => {
+            const materialId = row.getAttribute('data-material-id');
+            const cb = row.querySelector('.material-checkbox');
+            if (cb && materialId) {
+                cb.checked = true;
+                selectedMaterials.set(materialId, order++);
+                const orderSpan = row.querySelector('.selection-order');
+                if (orderSpan) {
+                    orderSpan.textContent = selectedMaterials.get(materialId);
+                    orderSpan.classList.remove('hidden');
+                }
+            }
+        });
+    } else {
+        // 取消所有选择
+        rows.forEach(row => {
+            const cb = row.querySelector('.material-checkbox');
+            const orderSpan = row.querySelector('.selection-order');
+            if (cb) {
+                cb.checked = false;
+            }
+            if (orderSpan) {
+                orderSpan.classList.add('hidden');
+            }
+        });
+        selectedMaterials.clear();
+    }
+    
+    console.log('全选/取消全选后:', Array.from(selectedMaterials.entries()));
+}
+
+function updateSelection(checkbox) {
+    const tr = checkbox.closest('tr');
+    const materialId = parseInt(tr.getAttribute('data-material-id'));
+    const orderSpan = tr.querySelector('.selection-order');
+    
+    console.log('更新选择:', {
+        materialId: materialId,
+        checked: checkbox.checked,
+        currentSelections: Array.from(selectedMaterials.keys())
+    });
+
+    if (checkbox.checked) {
+        // 添加到选中列表
+        selectedMaterials.set(materialId, selectedMaterials.size + 1);
+        orderSpan.textContent = selectedMaterials.get(materialId);
+        orderSpan.classList.remove('hidden');
+    } else {
+        // 从选中列表移除
+        const removedOrder = selectedMaterials.get(materialId);
+        selectedMaterials.delete(materialId);
+        orderSpan.classList.add('hidden');
+        
+        // 更新其他选中项的顺序
+        selectedMaterials.forEach((order, id) => {
+            if (order > removedOrder) {
+                selectedMaterials.set(id, order - 1);
+                const otherTr = document.querySelector(`tr[data-material-id="${id}"]`);
+                if (otherTr) {
+                    const otherOrderSpan = otherTr.querySelector('.selection-order');
+                    otherOrderSpan.textContent = order - 1;
+                }
+            }
+        });
+    }
+    
+    console.log('选择更新后:', Array.from(selectedMaterials.entries()));
+}
+
+function updateSelectionDisplay(checkbox) {
+    const row = checkbox.closest('tr');
+    const materialId = row.getAttribute('data-material-id');
+    const orderSpan = checkbox.nextElementSibling;
+    
+    if (checkbox.checked && selectedMaterials.has(materialId)) {
+        orderSpan.textContent = selectedMaterials.get(materialId);
+        orderSpan.classList.remove('hidden');
+    } else {
+        orderSpan.classList.add('hidden');
+    }
+}
+
+function updateAllSelectionDisplay() {
+    document.querySelectorAll('.material-checkbox').forEach(cb => {
+        updateSelectionDisplay(cb);
+    });
+}
+
+async function publishSelected() {
+    // 检查是否有选中的文章
+    if (selectedMaterials.size === 0) {
+        alert('请先选择要发布的文章');
+        return;
+    }
+    
+    if (!confirm('确定要一键发布选中的文章吗？')) {
+        return;
+    }
+    
+    try {
+        // 按选择顺序排序材料ID
+        const sortedMaterials = Array.from(selectedMaterials.entries())
+            .sort((a, b) => a[1] - b[1])
+            .map(entry => parseInt(entry[0]))
+            .filter(id => !isNaN(id));
+            
+        // 检查个选中的文章是否都已选择发布账号
+        const accountErrors = [];
+        let allHaveAccounts = true;
+        
+        for (const materialId of sortedMaterials) {
+            const row = document.querySelector(`tr[data-material-id="${materialId}"]`);
+            if (!row) continue;
+            
+            const accountSelect = row.querySelector('select');
+            if (!accountSelect || !accountSelect.value) {
+                const titleCell = row.querySelector('td:nth-child(2)');
+                const title = titleCell ? titleCell.textContent.trim() : `ID: ${materialId}`;
+                accountErrors.push(title);
+                allHaveAccounts = false;
+            }
+        }
+        
+        if (!allHaveAccounts) {
+            alert('请为以下文章选择发布账号：\n' + accountErrors.join('\n'));
+            return;
+        }
+        
+        // 获取头条号首发状态
+        const toutiaoFirst = document.getElementById('toutiao_first').checked;
+        
+        // 获取预约发布状态和时间
+        const schedulePublish = document.getElementById('schedule_publish').checked;
+        let scheduleTime = null;
+        if (schedulePublish) {
+            const scheduleTimeInput = document.getElementById('schedule_time').value;
+            if (!scheduleTimeInput) {
+                alert('请选择预约发布时间');
+                return;
+            }
+            // 将本地时间转换为 UTC 时间
+            scheduleTime = new Date(scheduleTimeInput).toISOString();
+        }
+        
+        console.log('发布参数:', {
+            toutiaoFirst,
+            schedulePublish,
+            scheduleTime
+        });
+        
+        const response = await fetch('/api/materials/publish-batch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                material_ids: sortedMaterials,
+                toutiao_first: toutiaoFirst,
+                schedule_publish: schedulePublish,
+                schedule_time: scheduleTime
+            })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            let message = data.message + "\n\n详细结果：\n";
+            data.details.forEach(detail => {
+                const status = detail.success ? '✓' : '✗';
+                message += `${status} 文章ID ${detail.material_id}: ${detail.message}\n`;
+            });
+            
+            alert(message);
+            window.location.reload();
+        } else {
+            throw new Error(data.detail || '发布失败');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('发布过程出错：' + error.message);
+    }
+}
+
+async function deleteMaterial(materialId) {
+    if (!confirm('确定要删除这个素材吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/materials/${materialId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('删除失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function returnToUnpublished(materialId) {
+    if (!confirm('确定要将此素材返回到未发布状态吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/materials/${materialId}/status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: 'unpublished' })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || '返回失败');
+        }
+        
+        const data = await response.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('返回失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function batchReturnToUnpublished() {
+    if (!confirm('确定要将所有已发布的素材返回到未发布状态吗？（不包括示例数据）')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/materials/batch-return', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('批量返回失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function batchClearPublished() {
+    if (!confirm('确定要清空已发布页面的所有显示内容吗？\n\n注意：这不会真正删除数据，重新扫描素材库时可以恢复这些记录。')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/materials/batch-clear', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert(`成功清空了 ${data.cleared_count} 条记录`);
+            window.location.reload();
+        } else {
+            alert('清空失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+function showRepublishModal(materialId) {
+    currentMaterialId = materialId;
+    document.getElementById('republish-modal').classList.remove('hidden');
+}
+
+function closeRepublishModal() {
+    currentMaterialId = null;
+    document.getElementById('republish-modal').classList.add('hidden');
+    document.getElementById('republish-account').value = '';
+}
+
+async function confirmRepublish() {
+    const accountId = document.getElementById('republish-account').value;
+    if (!accountId) {
+        alert('请选择发布账号');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/materials/${currentMaterialId}/republish`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ account_id: parseInt(accountId) })
+        });
+        
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.detail || '重新发布失败');
+        }
+        
+        // 关闭弹窗并刷新页面
+        closeRepublishModal();
+        window.location.reload();
+    } catch (error) {
+        alert('错误！ ' + error.message);
+    }
+}
+
+function editTitle(element, materialId) {
+    const titleText = element.textContent.trim();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = titleText;
+    input.className = 'w-full px-2 py-1 border rounded';
+    
+    input.onblur = async () => {
+        const newTitle = input.value.trim();
+        if (newTitle !== titleText) {
+            try {
+                const response = await fetch(`/api/materials/${materialId}/title`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ title: newTitle })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                showToast('标题更新成功', 'success');
+                await loadMaterials(); // 刷新列表
+            } catch (error) {
+                console.error('更新标题失败:', error);
+                showToast('更新标题失败，请重试', 'error');
+                element.textContent = titleText; // 恢复原标题
+            }
+        } else {
+            element.textContent = titleText;
+        }
+    };
+    
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+            input.blur();
+        } else if (e.key === 'Escape') {
+            element.textContent = titleText;
+        }
+    };
+    
+    element.textContent = '';
+    element.appendChild(input);
+    input.focus();
+    input.select();
+}
+
+async function directPublish(materialId) {
+    try {
+        const response = await fetch(`/api/materials/${materialId}/direct-publish`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ toutiao_first: toutiaoFirst })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        showToast('开始发布...', 'info');
+        await loadMaterials(); // 刷新列表
+    } catch (error) {
+        console.error('发布失败:', error);
+        showToast('发布失败，请重试', 'error');
+    }
+}
+
+async function updateAccount(materialId, accountId) {
+    try {
+        console.log(`更新素材 ${materialId} 的账号为 ${accountId}`);
+        
+        const response = await fetch(`/api/materials/${materialId}/account`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                account_id: parseInt(accountId)
+            })
+        });
+        
+        const data = await response.json();
+        console.log('更新账号响应:', data);
+        
+        if (!data.success) {
+            throw new Error(data.message || '更新失败');
+        }
+    } catch (error) {
+        console.error('更新账号出错:', error);
+        alert('更新账号失败，请重试');
+    }
+}
+
+async function batchCancelSchedule() {
+    if (!confirm('确定要取消所有预约发布任务吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/materials/cancel-all-schedules', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('取消失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function cancelSchedule(materialId) {
+    if (!confirm('确定要取消这个预约发布任务吗？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/materials/${materialId}/cancel-schedule`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('取消失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('操作失败：' + error.message);
+    }
+}
+
+async function editSchedule(materialId) {
+    // 创建时间选择输入框
+    const currentRow = document.querySelector(`tr[data-material-id="${materialId}"]`);
+    const currentTimeCell = currentRow.querySelector('td:first-child');
+    const currentTime = currentTimeCell.textContent.trim();
+    
+    // 创建输入框
+    const input = document.createElement('input');
+    input.type = 'datetime-local';
+    input.className = 'rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500';
+    
+    // 设置当前时间
+    if (currentTime) {
+        const date = new Date(currentTime);
+        input.value = date.toISOString().slice(0, 16); // 格式化为 YYYY-MM-DDTHH:mm
+    }
+    
+    // 替换原有内容
+    const originalContent = currentTimeCell.innerHTML;
+    currentTimeCell.innerHTML = '';
+    currentTimeCell.appendChild(input);
+    
+    // 添加保存和取消按钮
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'flex space-x-2 mt-2';
+    
+    const saveButton = document.createElement('button');
+    saveButton.textContent = '保存';
+    saveButton.className = 'text-green-600 hover:text-green-900';
+    
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = '取消';
+    cancelButton.className = 'text-red-600 hover:text-red-900';
+    
+    buttonContainer.appendChild(saveButton);
+    buttonContainer.appendChild(cancelButton);
+    currentTimeCell.appendChild(buttonContainer);
+    
+    // 保存按钮点击事件
+    saveButton.onclick = async () => {
+        const newTime = input.value;
+        if (!newTime) {
+            alert('请选择时间');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/materials/${materialId}/update-schedule`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    schedule_time: new Date(newTime).toISOString()
+                })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert('更新失败：' + data.message);
+                currentTimeCell.innerHTML = originalContent;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('操作失败：' + error.message);
+            currentTimeCell.innerHTML = originalContent;
+        }
+    };
+    
+    // 取消按钮点击事件
+    cancelButton.onclick = () => {
+        currentTimeCell.innerHTML = originalContent;
+    };
+}
+
+function toggleScheduleTime(checkbox) {
+    const container = document.getElementById('schedule_time_container');
+    if (checkbox.checked) {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+}
+
+// 发布到草稿箱
+async function publishToDraft(materialId) {
+    try {
+        const response = await fetch(`/api/materials/${materialId}/publish-draft`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        showToast('已发布到草稿箱', 'success');
+        await loadMaterials(); // 刷新列表
+    } catch (error) {
+        console.error('发布到草稿箱失败:', error);
+        showToast('发布到草稿箱失败，请重试', 'error');
+    }
+}
+
+// 显示提示信息
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded shadow-lg ${
+        type === 'error' ? 'bg-red-500' :
+        type === 'success' ? 'bg-green-500' :
+        type === 'warning' ? 'bg-yellow-500' :
+        'bg-blue-500'
+    } text-white`;
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
+// 切换头条号首发状态
+function toggleToutiaoFirst(checkbox) {
+    toutiaoFirst = checkbox.checked;
+}
+
+// 切换标签页
+function switchTab(tabId) {
+    // 隐藏所有标签页内容
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.add('hidden');
+    });
+    
+    // 显示选中的标签页
+    document.getElementById(tabId).classList.remove('hidden');
+    
+    // 更新标签页样式
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('border-indigo-500', 'text-indigo-600');
+        button.classList.add('border-transparent', 'text-gray-500');
+    });
+    
+    const activeButton = document.querySelector(`[onclick="switchTab('${tabId}')"]`);
+    activeButton.classList.remove('border-transparent', 'text-gray-500');
+    activeButton.classList.add('border-indigo-500', 'text-indigo-600');
+    
+    // 加载对应标签页的数据
+    if (tabId === 'unpublished-tab') {
+        displayUnpublishedMaterials();
+    } else if (tabId === 'published-tab') {
+        displayPublishedMaterials();
+    } else if (tabId === 'scheduled-tab') {
+        displayScheduledMaterials();
+    }
+}
+
+async function batchPublish() {
+    const selectedIds = Array.from(selectedMaterials.keys());
+    console.log('准备发布的素材IDs:', selectedIds);
+    
+    if (selectedIds.length === 0) {
+        alert('请先选择要发布的素材');
+        return;
+    }
+    
+    // 获取头条优先开关状态
+    const isToutiaoFirst = document.getElementById('toutiao_first').checked;
+    
+    try {
+        console.log('发送批量发布请求:', {
+            material_ids: selectedIds,
+            is_toutiao_first: isToutiaoFirst
+        });
+        
+        const response = await fetch('/api/materials/batch-publish', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                material_ids: selectedIds,
+                is_toutiao_first: isToutiaoFirst
+            })
+        });
+        
+        const data = await response.json();
+        console.log('批量发布响应:', data);
+        
+        if (data.success) {
+            const results = data.results;
+            alert(`发布完成！\n成功：${results.success}\n失败：${results.failed}`);
+            
+            // 清空选择
+            selectedMaterials.clear();
+            
+            // 更新显示
+            document.querySelectorAll('.material-checkbox').forEach(checkbox => {
+                checkbox.checked = false;
+                const orderSpan = checkbox.closest('tr').querySelector('.selection-order');
+                if (orderSpan) {
+                    orderSpan.classList.add('hidden');
+                    orderSpan.textContent = '';
+                }
+            });
+            
+            // 重新加载素材列表
+            await loadMaterials('unpublished');
+            await loadMaterials('published');
+        } else {
+            alert('发布失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('批量发布出错:', error);
+        alert('发布出错：' + error.message);
+    }
+}
+</script>
+{% endblock %} 
