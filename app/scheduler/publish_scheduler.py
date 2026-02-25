@@ -232,12 +232,27 @@ def sync_xhs_auto_fetch():
             total_folders = 0
             added_count = 0
             updated_count = 0
+            skipped_count = 0
+            
+            # 计算30天截止时间（只处理最近一个月内的素材）
+            cutoff_date = datetime.now() - timedelta(days=30)
+            
             if os.path.exists(settings.materials_path):
                 for item in os.listdir(settings.materials_path):
                     folder_path = os.path.join(settings.materials_path, item)
                     if not os.path.isdir(folder_path):
                         continue
                     total_folders += 1
+                    
+                    # 跳过超过30天未修改的文件夹
+                    try:
+                        folder_mtime = datetime.fromtimestamp(os.path.getmtime(folder_path))
+                        if folder_mtime < cutoff_date:
+                            logger.debug(f"[XHS-AUTO] 跳过30天前的文件夹: {item} (修改时间: {folder_mtime.strftime('%Y-%m-%d')})")
+                            skipped_count += 1
+                            continue
+                    except Exception:
+                        pass  # 无法获取修改时间时，照常处理
 
                     # 统计图片
                     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
@@ -284,7 +299,7 @@ def sync_xhs_auto_fetch():
             settings.total_folders = total_folders
             settings.last_scan = datetime.now()
             db.commit()
-            logger.info(f"[XHS-AUTO] 扫描完成：新增 {added_count}，更新 {updated_count}，总数 {total_folders}")
+            logger.info(f"[XHS-AUTO] 扫描完成：新增 {added_count}，更新 {updated_count}，跳过(>30天) {skipped_count}，总数 {total_folders}")
             # 推送SSE事件
             try:
                 from utils.event_bus import publish as sse_publish

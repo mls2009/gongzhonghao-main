@@ -10,7 +10,7 @@ import os
 import platform
 import subprocess
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -332,6 +332,10 @@ async def scan_materials_folder(db: Session = Depends(get_db)):
         added_count = 0
         updated_count = 0
         error_count = 0
+        skipped_count = 0
+        
+        # 计算30天截止时间（只处理最近一个月内的素材）
+        cutoff_date = datetime.now() - timedelta(days=30)
         
         # 扫描素材库中的所有子文件夹
         all_items = os.listdir(settings.materials_path)
@@ -344,6 +348,16 @@ async def scan_materials_folder(db: Session = Depends(get_db)):
             if not os.path.isdir(folder_path):
                 logger.debug(f"跳过文件: {item}")
                 continue
+            
+            # 跳过超过30天未修改的文件夹
+            try:
+                folder_mtime = datetime.fromtimestamp(os.path.getmtime(folder_path))
+                if folder_mtime < cutoff_date:
+                    logger.debug(f"跳过30天前的文件夹: {item} (修改时间: {folder_mtime.strftime('%Y-%m-%d')})")
+                    skipped_count += 1
+                    continue
+            except Exception:
+                pass  # 无法获取修改时间时，照常处理
             
             try:
                 # 文件夹名称作为素材标题
@@ -415,17 +429,18 @@ async def scan_materials_folder(db: Session = Depends(get_db)):
         
         db.commit()
         
-        logger.info(f"扫描完成 - 新增: {added_count}, 更新: {updated_count}, 错误: {error_count}, 总计: {total_folders}")
+        logger.info(f"扫描完成 - 新增: {added_count}, 更新: {updated_count}, 跳过(>30天): {skipped_count}, 错误: {error_count}, 总计: {total_folders}")
         
         return {
             "success": True, 
-            "message": f"扫描完成：新增 {added_count} 个素材，更新 {updated_count} 个素材",
+            "message": f"扫描完成：新增 {added_count} 个素材，更新 {updated_count} 个素材（已跳过 {skipped_count} 个30天前的文件夹）",
             "total_files": total_folders,
             "new_count": added_count,  # 添加这个字段以匹配前端显示
             "updated_count": updated_count,
             "stats": {
                 "added": added_count,
                 "updated": updated_count,
+                "skipped": skipped_count,
                 "errors": error_count,
                 "total_folders": total_folders
             }

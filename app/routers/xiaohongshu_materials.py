@@ -8,7 +8,7 @@ import logging
 import os
 from pathlib import Path
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 import importlib.util
 
@@ -259,6 +259,10 @@ async def fetch_email_materials(db: Session = Depends(get_db)):
                 
                 added_count = 0
                 updated_count = 0
+                skipped_count = 0
+                
+                # 计算30天截止时间（只处理最近一个月内的素材）
+                cutoff_date = datetime.now() - timedelta(days=30)
                 
                 # 扫描新创建的文件夹
                 for item in os.listdir(settings.materials_path):
@@ -266,6 +270,16 @@ async def fetch_email_materials(db: Session = Depends(get_db)):
                     
                     if not os.path.isdir(folder_path):
                         continue
+                    
+                    # 跳过超过30天未修改的文件夹
+                    try:
+                        folder_mtime = datetime.fromtimestamp(os.path.getmtime(folder_path))
+                        if folder_mtime < cutoff_date:
+                            logger.debug(f"邮件扫描跳过30天前的文件夹: {item} (修改时间: {folder_mtime.strftime('%Y-%m-%d')})")
+                            skipped_count += 1
+                            continue
+                    except Exception:
+                        pass  # 无法获取修改时间时，照常处理
                     
                     # 统计图片数量
                     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
@@ -336,7 +350,7 @@ async def fetch_email_materials(db: Session = Depends(get_db)):
                 
                 # 合并结果信息
                 all_messages = result["messages"] + [
-                    f"数据库更新完成: 新增 {added_count} 个素材，更新 {updated_count} 个素材"
+                    f"数据库更新完成: 新增 {added_count} 个素材，更新 {updated_count} 个素材（已跳过 {skipped_count} 个30天前的文件夹）"
                 ]
                 
                 return {
