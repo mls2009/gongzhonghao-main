@@ -404,11 +404,12 @@ def plan_xhs_auto_publish():
 
         today = datetime.now()
         
-        # 根据星期决定使用几个时间窗口：周一发3条（消化周末积累），其他工作日发2条
+        # 根据星期决定使用几个时间窗口：周一和周日发3条（消化周末积累），其他工作日发2条
         weekday = today.weekday()  # 0=周一, 6=周日
-        if weekday == 0:  # 周一
+        if weekday in [0, 6]:  # 周一或周日
             max_per_account = min(3, len(windows))
-            logger.info("[XHS-AUTO] 今天是周一，每账号最多安排3条素材")
+            day_name = "周一" if weekday == 0 else "周日"
+            logger.info(f"[XHS-AUTO] 今天是{day_name}，每账号最多安排3条素材")
         else:
             max_per_account = min(2, len(windows))
             logger.info(f"[XHS-AUTO] 今天是周{weekday+1}，每账号最多安排2条素材")
