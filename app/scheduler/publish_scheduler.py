@@ -461,7 +461,7 @@ def plan_xhs_auto_publish():
                 m.schedule_time = run_at
                 m.schedule_status = 'scheduled'
                 db.commit()
-                logger.info(f"[XHS-AUTO] 已预约素材 {m.id} 于 {run_at}")
+                logger.info(f"[XHS-AUTO] 已预约素材 {m.id} ({m.title}) 于 {run_at}")
             except Exception as e:
                 logger.error(f"[XHS-AUTO] 创建任务失败: {e}")
 
