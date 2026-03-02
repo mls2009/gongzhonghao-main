@@ -404,6 +404,9 @@ def plan_xhs_auto_publish():
 
         today = datetime.now()
         
+        # 获取所有账号信息用于日志显示
+        accounts = {acc.id: (acc.author_name or acc.username) for acc in db.query(Account).all()}
+        
         # 根据星期决定使用几个时间窗口：周一和周日发3条（消化周末积累），其他工作日发2条
         weekday = today.weekday()  # 0=周一, 6=周日
         if weekday in [0, 6]:  # 周一或周日
@@ -461,7 +464,8 @@ def plan_xhs_auto_publish():
                 m.schedule_time = run_at
                 m.schedule_status = 'scheduled'
                 db.commit()
-                logger.info(f"[XHS-AUTO] 已预约素材 {m.id} ({m.title}) 于 {run_at}")
+                acc_name = accounts.get(m.account_id, "未知账号")
+                logger.info(f"[XHS-AUTO] 已预约素材 {m.id} ({m.title}) 于 {run_at}，发布账号：{acc_name}")
             except Exception as e:
                 logger.error(f"[XHS-AUTO] 创建任务失败: {e}")
 
